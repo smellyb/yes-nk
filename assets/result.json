@@ -1,48 +1,993 @@
 {
   "info": {
-    "description": "YES-NK ok-script COCO feature dataset (1920x1080 16:9 baseline, full 21 MaaNikke pipelines). Run tools/convert_maa_assets.py to import templates from MaaNikke.",
-    "version": "0.2.0"
+    "description": "YES-NK ok-script COCO dataset (1280x720 16:9 baseline) directly converted from Shinarin/MaaNikke",
+    "version": "0.3.0",
+    "source_repo": "https://github.com/Shinarin/MaaNikke",
+    "base_resolution": [
+      1280,
+      720
+    ]
   },
-  "images": [],
-  "categories": [
-    { "id": 1, "name": "lobby_ark_icon" },
-    { "id": 2, "name": "lobby_mail_icon" },
-    { "id": 3, "name": "lobby_friend_icon" },
-    { "id": 4, "name": "lobby_outpost_defense_btn" },
-    { "id": 5, "name": "lobby_outpost_entry" },
-    { "id": 6, "name": "outpost_bulletin_icon" },
-    { "id": 7, "name": "lobby_shop_icon" },
-    { "id": 8, "name": "lobby_cash_shop_icon" },
-    { "id": 9, "name": "lobby_mission_icon" },
-    { "id": 10, "name": "lobby_pass_banner" },
-    { "id": 11, "name": "lobby_recruit_icon" },
-    { "id": 12, "name": "recruit_next_banner_btn" },
-    { "id": 13, "name": "lobby_nikke_nav" },
-    { "id": 14, "name": "nikke_advise_entry" },
-    { "id": 15, "name": "equip_slot_head" },
-    { "id": 16, "name": "lobby_liberation_icon" },
-    { "id": 17, "name": "ark_interception_entry" },
-    { "id": 18, "name": "ark_sim_room_entry" },
-    { "id": 19, "name": "ark_arena_entry" },
-    { "id": 20, "name": "ark_tribe_tower_entry" },
-    { "id": 21, "name": "lobby_coop_banner" },
-    { "id": 22, "name": "lobby_solo_raid_banner" },
-    { "id": 23, "name": "lobby_union_icon" },
-    { "id": 24, "name": "lobby_event_banner" },
-    { "id": 25, "name": "popup_close_x" },
-    { "id": 26, "name": "popup_dont_show_today" },
-    { "id": 27, "name": "nav_home_btn" },
-    { "id": 28, "name": "nav_back_btn" },
-    { "id": 29, "name": "mail_claim_all_btn" },
-    { "id": 30, "name": "friend_send_all_btn" },
-    { "id": 31, "name": "outpost_claim_reward_btn" },
-    { "id": 32, "name": "outpost_wipe_out_btn" },
-    { "id": 33, "name": "dispatch_claim_all_btn" },
-    { "id": 34, "name": "dispatch_send_all_btn" },
-    { "id": 35, "name": "shop_diamond_icon" },
-    { "id": 36, "name": "shop_credit_icon" },
-    { "id": 37, "name": "shop_refresh_btn" },
-    { "id": 38, "name": "mission_claim_all_btn" }
+  "images": [
+    {
+      "id": 1,
+      "file_name": "images/lobby_ark_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "ark.png"
+    },
+    {
+      "id": 2,
+      "file_name": "images/lobby_mail_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "claimmail/mail.png"
+    },
+    {
+      "id": 3,
+      "file_name": "images/lobby_friend_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "friendpoints/friend.png"
+    },
+    {
+      "id": 4,
+      "file_name": "images/lobby_outpost_defense_btn.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "outpostdefense/intooutpostdefense1.png"
+    },
+    {
+      "id": 5,
+      "file_name": "images/lobby_outpost_entry.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "outpostdefense/intooutpostdefense2.png"
+    },
+    {
+      "id": 6,
+      "file_name": "images/outpost_bulletin_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "dispatchboard/intodispatchboard.png"
+    },
+    {
+      "id": 7,
+      "file_name": "images/outpost_loop_room_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "looproomandsync/looproom.png"
+    },
+    {
+      "id": 8,
+      "file_name": "images/outpost_sync_device_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "looproomandsync/sync.png"
+    },
+    {
+      "id": 9,
+      "file_name": "images/lobby_shop_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "gameshop.png"
+    },
+    {
+      "id": 10,
+      "file_name": "images/lobby_cash_shop_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "payshop/payshop.png"
+    },
+    {
+      "id": 11,
+      "file_name": "images/lobby_mission_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "dailyrewards/task.png"
+    },
+    {
+      "id": 12,
+      "file_name": "images/lobby_pass_banner.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "2pass.png"
+    },
+    {
+      "id": 13,
+      "file_name": "images/lobby_recruit_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "teamrecruit/teamrecruit.png"
+    },
+    {
+      "id": 14,
+      "file_name": "images/recruit_next_banner_btn.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "teamrecruit/recruitswiep.png"
+    },
+    {
+      "id": 15,
+      "file_name": "images/lobby_nikke_nav.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "inquiryandgift/intonikkes.png"
+    },
+    {
+      "id": 16,
+      "file_name": "images/nikke_advise_entry.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "inquiryandgift/nikkes.png"
+    },
+    {
+      "id": 17,
+      "file_name": "images/equip_slot_head.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "gearup/itembar.png"
+    },
+    {
+      "id": 18,
+      "file_name": "images/lobby_liberation_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "gengshengguan/blue_yes.png"
+    },
+    {
+      "id": 19,
+      "file_name": "images/ark_interception_entry.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "interception/intointerception.png"
+    },
+    {
+      "id": 20,
+      "file_name": "images/ark_sim_room_entry.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "simroom/simroom.png"
+    },
+    {
+      "id": 21,
+      "file_name": "images/ark_arena_entry.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "arena/intoarena.png"
+    },
+    {
+      "id": 22,
+      "file_name": "images/ark_tribe_tower_entry.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "tower/tower.png"
+    },
+    {
+      "id": 23,
+      "file_name": "images/lobby_coop_banner.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "teambattle/teambattle.png"
+    },
+    {
+      "id": 24,
+      "file_name": "images/lobby_solo_raid_banner.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "soloraid/soloraid.png"
+    },
+    {
+      "id": 25,
+      "file_name": "images/lobby_union_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "lianmeng.png"
+    },
+    {
+      "id": 26,
+      "file_name": "images/lobby_event_banner.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "limitedevent/newflavor/newflavor_into.png"
+    },
+    {
+      "id": 27,
+      "file_name": "images/popup_close_x.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "x.png"
+    },
+    {
+      "id": 28,
+      "file_name": "images/popup_notice_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "notice.png"
+    },
+    {
+      "id": 29,
+      "file_name": "images/nav_home_btn.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "homebutton1.png"
+    },
+    {
+      "id": 30,
+      "file_name": "images/nav_back_btn.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "back.png"
+    },
+    {
+      "id": 31,
+      "file_name": "images/friend_send_all_btn.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "friendpoints/friendwin.png"
+    },
+    {
+      "id": 32,
+      "file_name": "images/outpost_wipe_out_btn.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "outpostdefense/spendzuan.png"
+    },
+    {
+      "id": 33,
+      "file_name": "images/dispatch_claim_all_btn.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "dispatchboard/exitdispatch.png"
+    },
+    {
+      "id": 34,
+      "file_name": "images/dispatch_send_all_btn.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "dispatchboard/dispatch.png"
+    },
+    {
+      "id": 35,
+      "file_name": "images/shop_diamond_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "freeshopdaily/gameshopdiamonds.png"
+    },
+    {
+      "id": 36,
+      "file_name": "images/shop_free_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "freeshopdaily/0zuanpay.png"
+    },
+    {
+      "id": 37,
+      "file_name": "images/shop_credit_icon.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "limitedevent/limitedevent_credit.png"
+    },
+    {
+      "id": 38,
+      "file_name": "images/shop_refresh_btn.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "freeshopdaily/freeshoprefresh.png"
+    },
+    {
+      "id": 39,
+      "file_name": "images/shop_arena_tab.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "freeshopdaily/arenashop.png"
+    },
+    {
+      "id": 40,
+      "file_name": "images/ui_red_dot.png",
+      "width": 1280,
+      "height": 720,
+      "source_template": "redpoint.png"
+    }
   ],
-  "annotations": []
+  "categories": [
+    {
+      "id": 1,
+      "name": "lobby_ark_icon"
+    },
+    {
+      "id": 2,
+      "name": "lobby_mail_icon"
+    },
+    {
+      "id": 3,
+      "name": "lobby_friend_icon"
+    },
+    {
+      "id": 4,
+      "name": "lobby_outpost_defense_btn"
+    },
+    {
+      "id": 5,
+      "name": "lobby_outpost_entry"
+    },
+    {
+      "id": 6,
+      "name": "outpost_bulletin_icon"
+    },
+    {
+      "id": 7,
+      "name": "outpost_loop_room_icon"
+    },
+    {
+      "id": 8,
+      "name": "outpost_sync_device_icon"
+    },
+    {
+      "id": 9,
+      "name": "lobby_shop_icon"
+    },
+    {
+      "id": 10,
+      "name": "lobby_cash_shop_icon"
+    },
+    {
+      "id": 11,
+      "name": "lobby_mission_icon"
+    },
+    {
+      "id": 12,
+      "name": "lobby_pass_banner"
+    },
+    {
+      "id": 13,
+      "name": "lobby_recruit_icon"
+    },
+    {
+      "id": 14,
+      "name": "recruit_next_banner_btn"
+    },
+    {
+      "id": 15,
+      "name": "lobby_nikke_nav"
+    },
+    {
+      "id": 16,
+      "name": "nikke_advise_entry"
+    },
+    {
+      "id": 17,
+      "name": "equip_slot_head"
+    },
+    {
+      "id": 18,
+      "name": "lobby_liberation_icon"
+    },
+    {
+      "id": 19,
+      "name": "ark_interception_entry"
+    },
+    {
+      "id": 20,
+      "name": "ark_sim_room_entry"
+    },
+    {
+      "id": 21,
+      "name": "ark_arena_entry"
+    },
+    {
+      "id": 22,
+      "name": "ark_tribe_tower_entry"
+    },
+    {
+      "id": 23,
+      "name": "lobby_coop_banner"
+    },
+    {
+      "id": 24,
+      "name": "lobby_solo_raid_banner"
+    },
+    {
+      "id": 25,
+      "name": "lobby_union_icon"
+    },
+    {
+      "id": 26,
+      "name": "lobby_event_banner"
+    },
+    {
+      "id": 27,
+      "name": "popup_close_x"
+    },
+    {
+      "id": 28,
+      "name": "popup_notice_icon"
+    },
+    {
+      "id": 29,
+      "name": "popup_dont_show_today"
+    },
+    {
+      "id": 30,
+      "name": "nav_home_btn"
+    },
+    {
+      "id": 31,
+      "name": "nav_back_btn"
+    },
+    {
+      "id": 32,
+      "name": "mail_claim_all_btn"
+    },
+    {
+      "id": 33,
+      "name": "friend_send_all_btn"
+    },
+    {
+      "id": 34,
+      "name": "outpost_claim_reward_btn"
+    },
+    {
+      "id": 35,
+      "name": "outpost_wipe_out_btn"
+    },
+    {
+      "id": 36,
+      "name": "dispatch_claim_all_btn"
+    },
+    {
+      "id": 37,
+      "name": "dispatch_send_all_btn"
+    },
+    {
+      "id": 38,
+      "name": "shop_diamond_icon"
+    },
+    {
+      "id": 39,
+      "name": "shop_free_icon"
+    },
+    {
+      "id": 40,
+      "name": "shop_credit_icon"
+    },
+    {
+      "id": 41,
+      "name": "shop_refresh_btn"
+    },
+    {
+      "id": 42,
+      "name": "shop_arena_tab"
+    },
+    {
+      "id": 43,
+      "name": "mission_claim_all_btn"
+    },
+    {
+      "id": 44,
+      "name": "ui_red_dot"
+    }
+  ],
+  "annotations": [
+    {
+      "id": 1,
+      "image_id": 1,
+      "category_id": 1,
+      "bbox": [
+        888,
+        467,
+        41,
+        41
+      ],
+      "area": 1681,
+      "iscrowd": 0
+    },
+    {
+      "id": 2,
+      "image_id": 2,
+      "category_id": 2,
+      "bbox": [
+        1216,
+        16,
+        24,
+        20
+      ],
+      "area": 480,
+      "iscrowd": 0
+    },
+    {
+      "id": 3,
+      "image_id": 3,
+      "category_id": 3,
+      "bbox": [
+        1216,
+        293,
+        24,
+        25
+      ],
+      "area": 600,
+      "iscrowd": 0
+    },
+    {
+      "id": 4,
+      "image_id": 4,
+      "category_id": 4,
+      "bbox": [
+        331,
+        600,
+        28,
+        24
+      ],
+      "area": 672,
+      "iscrowd": 0
+    },
+    {
+      "id": 5,
+      "image_id": 5,
+      "category_id": 5,
+      "bbox": [
+        330,
+        598,
+        29,
+        30
+      ],
+      "area": 870,
+      "iscrowd": 0
+    },
+    {
+      "id": 6,
+      "image_id": 6,
+      "category_id": 6,
+      "bbox": [
+        455,
+        571,
+        24,
+        31
+      ],
+      "area": 744,
+      "iscrowd": 0
+    },
+    {
+      "id": 7,
+      "image_id": 7,
+      "category_id": 7,
+      "bbox": [
+        705,
+        592,
+        49,
+        46
+      ],
+      "area": 2254,
+      "iscrowd": 0
+    },
+    {
+      "id": 8,
+      "image_id": 8,
+      "category_id": 8,
+      "bbox": [
+        620,
+        377,
+        41,
+        39
+      ],
+      "area": 1599,
+      "iscrowd": 0
+    },
+    {
+      "id": 9,
+      "image_id": 9,
+      "category_id": 9,
+      "bbox": [
+        922,
+        496,
+        50,
+        44
+      ],
+      "area": 2200,
+      "iscrowd": 0
+    },
+    {
+      "id": 10,
+      "image_id": 10,
+      "category_id": 10,
+      "bbox": [
+        350,
+        426,
+        29,
+        30
+      ],
+      "area": 870,
+      "iscrowd": 0
+    },
+    {
+      "id": 11,
+      "image_id": 11,
+      "category_id": 11,
+      "bbox": [
+        1209,
+        245,
+        24,
+        27
+      ],
+      "area": 648,
+      "iscrowd": 0
+    },
+    {
+      "id": 12,
+      "image_id": 12,
+      "category_id": 12,
+      "bbox": [
+        1134,
+        112,
+        20,
+        19
+      ],
+      "area": 380,
+      "iscrowd": 0
+    },
+    {
+      "id": 13,
+      "image_id": 13,
+      "category_id": 13,
+      "bbox": [
+        621,
+        646,
+        38,
+        41
+      ],
+      "area": 1558,
+      "iscrowd": 0
+    },
+    {
+      "id": 14,
+      "image_id": 14,
+      "category_id": 14,
+      "bbox": [
+        1197,
+        349,
+        28,
+        33
+      ],
+      "area": 924,
+      "iscrowd": 0
+    },
+    {
+      "id": 15,
+      "image_id": 15,
+      "category_id": 15,
+      "bbox": [
+        454,
+        629,
+        75,
+        75
+      ],
+      "area": 5625,
+      "iscrowd": 0
+    },
+    {
+      "id": 16,
+      "image_id": 16,
+      "category_id": 16,
+      "bbox": [
+        477,
+        128,
+        185,
+        45
+      ],
+      "area": 8325,
+      "iscrowd": 0
+    },
+    {
+      "id": 17,
+      "image_id": 17,
+      "category_id": 17,
+      "bbox": [
+        686,
+        635,
+        51,
+        45
+      ],
+      "area": 2295,
+      "iscrowd": 0
+    },
+    {
+      "id": 18,
+      "image_id": 18,
+      "category_id": 18,
+      "bbox": [
+        645,
+        425,
+        16,
+        14
+      ],
+      "area": 224,
+      "iscrowd": 0
+    },
+    {
+      "id": 19,
+      "image_id": 19,
+      "category_id": 19,
+      "bbox": [
+        541,
+        513,
+        96,
+        118
+      ],
+      "area": 11328,
+      "iscrowd": 0
+    },
+    {
+      "id": 20,
+      "image_id": 20,
+      "category_id": 20,
+      "bbox": [
+        486,
+        316,
+        59,
+        61
+      ],
+      "area": 3599,
+      "iscrowd": 0
+    },
+    {
+      "id": 21,
+      "image_id": 21,
+      "category_id": 21,
+      "bbox": [
+        728,
+        407,
+        60,
+        34
+      ],
+      "area": 2040,
+      "iscrowd": 0
+    },
+    {
+      "id": 22,
+      "image_id": 22,
+      "category_id": 22,
+      "bbox": [
+        692,
+        153,
+        80,
+        129
+      ],
+      "area": 10320,
+      "iscrowd": 0
+    },
+    {
+      "id": 23,
+      "image_id": 23,
+      "category_id": 23,
+      "bbox": [
+        81,
+        238,
+        30,
+        28
+      ],
+      "area": 840,
+      "iscrowd": 0
+    },
+    {
+      "id": 24,
+      "image_id": 24,
+      "category_id": 24,
+      "bbox": [
+        78,
+        240,
+        37,
+        24
+      ],
+      "area": 888,
+      "iscrowd": 0
+    },
+    {
+      "id": 25,
+      "image_id": 25,
+      "category_id": 25,
+      "bbox": [
+        1210,
+        256,
+        32,
+        28
+      ],
+      "area": 896,
+      "iscrowd": 0
+    },
+    {
+      "id": 26,
+      "image_id": 26,
+      "category_id": 26,
+      "bbox": [
+        833,
+        575,
+        113,
+        29
+      ],
+      "area": 3277,
+      "iscrowd": 0
+    },
+    {
+      "id": 27,
+      "image_id": 27,
+      "category_id": 27,
+      "bbox": [
+        788,
+        95,
+        21,
+        20
+      ],
+      "area": 420,
+      "iscrowd": 0
+    },
+    {
+      "id": 28,
+      "image_id": 28,
+      "category_id": 28,
+      "bbox": [
+        629,
+        348,
+        22,
+        25
+      ],
+      "area": 550,
+      "iscrowd": 0
+    },
+    {
+      "id": 29,
+      "image_id": 29,
+      "category_id": 30,
+      "bbox": [
+        66,
+        668,
+        24,
+        20
+      ],
+      "area": 480,
+      "iscrowd": 0
+    },
+    {
+      "id": 30,
+      "image_id": 30,
+      "category_id": 31,
+      "bbox": [
+        90,
+        656,
+        24,
+        25
+      ],
+      "area": 600,
+      "iscrowd": 0
+    },
+    {
+      "id": 31,
+      "image_id": 31,
+      "category_id": 33,
+      "bbox": [
+        636,
+        81,
+        23,
+        21
+      ],
+      "area": 483,
+      "iscrowd": 0
+    },
+    {
+      "id": 32,
+      "image_id": 32,
+      "category_id": 35,
+      "bbox": [
+        691,
+        538,
+        24,
+        27
+      ],
+      "area": 648,
+      "iscrowd": 0
+    },
+    {
+      "id": 33,
+      "image_id": 33,
+      "category_id": 36,
+      "bbox": [
+        640,
+        600,
+        26,
+        25
+      ],
+      "area": 650,
+      "iscrowd": 0
+    },
+    {
+      "id": 34,
+      "image_id": 34,
+      "category_id": 37,
+      "bbox": [
+        641,
+        600,
+        24,
+        24
+      ],
+      "area": 576,
+      "iscrowd": 0
+    },
+    {
+      "id": 35,
+      "image_id": 35,
+      "category_id": 38,
+      "bbox": [
+        645,
+        472,
+        52,
+        52
+      ],
+      "area": 2704,
+      "iscrowd": 0
+    },
+    {
+      "id": 36,
+      "image_id": 36,
+      "category_id": 39,
+      "bbox": [
+        697,
+        587,
+        30,
+        27
+      ],
+      "area": 810,
+      "iscrowd": 0
+    },
+    {
+      "id": 37,
+      "image_id": 37,
+      "category_id": 40,
+      "bbox": [
+        615,
+        406,
+        51,
+        53
+      ],
+      "area": 2703,
+      "iscrowd": 0
+    },
+    {
+      "id": 38,
+      "image_id": 38,
+      "category_id": 41,
+      "bbox": [
+        230,
+        311,
+        37,
+        27
+      ],
+      "area": 999,
+      "iscrowd": 0
+    },
+    {
+      "id": 39,
+      "image_id": 39,
+      "category_id": 42,
+      "bbox": [
+        13,
+        423,
+        31,
+        27
+      ],
+      "area": 837,
+      "iscrowd": 0
+    },
+    {
+      "id": 40,
+      "image_id": 40,
+      "category_id": 44,
+      "bbox": [
+        1249,
+        158,
+        8,
+        8
+      ],
+      "area": 64,
+      "iscrowd": 0
+    }
+  ]
 }

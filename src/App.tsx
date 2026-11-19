@@ -84,7 +84,7 @@ export default function App() {
       level: 'INFO',
       source: 'YES-NK',
       message:
-        '已完整转换 Shinarin/MaaNikke 全部 21 条国服自动化流水线至 YES-NK ok-script 架构（桌面分身 + 1080P 适配）。',
+        '已完整转换 Shinarin/MaaNikke 全部 22 条国服自动化流水线并内置 40 项实测 COCO 模板至 YES-NK ok-script 架构。',
     },
   ]);
   const [logFilter, setLogFilter] = useState<'ALL' | LogEntry['level']>('ALL');
@@ -301,7 +301,7 @@ export default function App() {
   ];
 
   const sectionBreadcrumbs: Record<NavSection, string> = {
-    tasks: 'YES-NK / 全量日常一条龙（21 条 MaaNikke 转换流水线）',
+    tasks: 'YES-NK / 全量日常一条龙（22 条 MaaNikke 转换流水线）',
     desktop: 'YES-NK / 仿 YES-BD2 桌面分身与 1080P 适配',
     triggers: 'YES-NK / 后台触发守护',
     mappings: 'YES-NK / COCO 特征与 MaaNikke 素材转换',

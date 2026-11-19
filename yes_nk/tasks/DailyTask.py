@@ -17,6 +17,7 @@ from yes_nk.tasks.EventStoryTask import EventStoryTask
 from yes_nk.tasks.FriendPointTask import FriendPointTask
 from yes_nk.tasks.InterceptionTask import InterceptionTask
 from yes_nk.tasks.LiberationTask import LiberationTask
+from yes_nk.tasks.LoopRoomAndSyncTask import LoopRoomAndSyncTask
 from yes_nk.tasks.MailTask import MailTask
 from yes_nk.tasks.OutpostDefenseTask import OutpostDefenseTask
 from yes_nk.tasks.PassRewardTask import PassRewardTask
@@ -43,6 +44,7 @@ ALL_PIPELINE_SPECS: list[tuple[str, str, bool, type[BaseNikkeTask]]] = [
     ("社交点招募（日常 1 抽）", "日常养成", True, SocialRecruitTask),
     ("妮姬咨询与好感送礼", "日常养成", True, AdviseGiftTask),
     ("装备升级（日常 1 次）", "日常养成", False, EquipmentUpgradeTask),
+    ("同步器与循环室升级", "日常养成", False, LoopRoomAndSyncTask),
     ("更生馆每日进度领取", "日常养成", False, LiberationTask),
     ("拦截战挑战与快速扫荡", "副本挑战", True, InterceptionTask),
     ("模拟室每日快速通关", "副本挑战", True, SimulationRoomTask),

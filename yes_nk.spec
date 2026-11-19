@@ -19,6 +19,7 @@ hidden_imports = [
     "yes_nk.tasks.SocialRecruitTask",
     "yes_nk.tasks.AdviseGiftTask",
     "yes_nk.tasks.EquipmentUpgradeTask",
+    "yes_nk.tasks.LoopRoomAndSyncTask",
     "yes_nk.tasks.LiberationTask",
     "yes_nk.tasks.InterceptionTask",
     "yes_nk.tasks.SimulationRoomTask",

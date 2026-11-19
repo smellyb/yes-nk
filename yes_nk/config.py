@@ -101,6 +101,7 @@ config: dict[str, Any] = {
         ["yes_nk.tasks.SocialRecruitTask", "SocialRecruitTask"],
         ["yes_nk.tasks.AdviseGiftTask", "AdviseGiftTask"],
         ["yes_nk.tasks.EquipmentUpgradeTask", "EquipmentUpgradeTask"],
+        ["yes_nk.tasks.LoopRoomAndSyncTask", "LoopRoomAndSyncTask"],
         ["yes_nk.tasks.LiberationTask", "LiberationTask"],
         ["yes_nk.tasks.InterceptionTask", "InterceptionTask"],
         ["yes_nk.tasks.SimulationRoomTask", "SimulationRoomTask"],

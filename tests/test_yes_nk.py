@@ -229,8 +229,12 @@ class YesNkCoreTests(unittest.TestCase):
             self.assertTrue(out_json.exists())
 
             coco = json.loads(out_json.read_text(encoding="utf-8"))
-            self.assertEqual(len(coco["categories"]), 38)
+            self.assertEqual(len(coco["categories"]), 44)
             self.assertEqual(len(coco["images"]), len(report.matched_features))
+            # 验证合成出的 ok-script 画布为 1280x720，且 bbox 为原始模板宽高
+            self.assertEqual(coco["images"][0]["width"], 1280)
+            self.assertEqual(coco["images"][0]["height"], 720)
+            self.assertEqual(coco["annotations"][0]["bbox"][2:], [48, 36])
 
             # 测试 MaaNikke pipeline JSON 解析与覆盖映射
             pipe_dir = tmp_path / "maa_pipeline"
@@ -261,10 +265,38 @@ class YesNkCoreTests(unittest.TestCase):
             self.assertIn("yes_nk.tasks.ArenaTask.ArenaTask", p_report.mapped_tasks)
             self.assertEqual(len(p_report.referenced_templates), 5)
 
-    def test_all_21_pipelines_in_daily_task_and_config(self) -> None:
-        self.assertEqual(len(ALL_PIPELINE_SPECS), 21)
-        # config.py 包含 DailyTask + 全部 21 个独立任务 = 22
-        self.assertEqual(len(config["onetime_tasks"]), 22)
+    def test_preconverted_real_maa_coco_assets(self) -> None:
+        """验证仓库已内置从 Shinarin/MaaNikke 直接转换好的 40 项 1280x720 ok-script 模板。"""
+        from tools.convert_maa_assets import decode_png_rgb
+
+        root = Path(__file__).resolve().parent.parent
+        result_json = root / "assets" / "result.json"
+        self.assertTrue(result_json.exists())
+        coco = json.loads(result_json.read_text(encoding="utf-8"))
+        self.assertEqual(len(coco["categories"]), 44)
+        self.assertGreaterEqual(len(coco["images"]), 40)
+        self.assertEqual(len(coco["images"]), len(coco["annotations"]))
+
+        for img_meta, ann in zip(coco["images"], coco["annotations"]):
+            img_path = root / "assets" / img_meta["file_name"]
+            self.assertTrue(img_path.exists(), f"缺少特征图: {img_path}")
+            self.assertEqual(img_meta["width"], 1280)
+            self.assertEqual(img_meta["height"], 720)
+            bx, by, bw, bh = ann["bbox"]
+            self.assertGreater(bw, 0)
+            self.assertGreater(bh, 0)
+            self.assertLessEqual(bx + bw, 1280)
+            self.assertLessEqual(by + bh, 720)
+
+        # 抽检一张真实转换后的模板可无损解码且包含非零像素
+        sample_w, sample_h, sample_rgb = decode_png_rgb(root / "assets" / "images" / "lobby_ark_icon.png")
+        self.assertEqual((sample_w, sample_h), (1280, 720))
+        self.assertTrue(any(b != 0 for b in sample_rgb))
+
+    def test_all_22_pipelines_in_daily_task_and_config(self) -> None:
+        self.assertEqual(len(ALL_PIPELINE_SPECS), 22)
+        # config.py 包含 DailyTask + 全部 22 个独立任务 = 23
+        self.assertEqual(len(config["onetime_tasks"]), 23)
 
         harness = FakeDailyTaskHarness(enable_all=True)
         summary = harness.run()
@@ -298,9 +330,9 @@ class YesNkCoreTests(unittest.TestCase):
             get_grouped_pipelines,
         )
 
-        self.assertEqual(len(DEFAULT_DAILY_TOGGLES), 21)
+        self.assertEqual(len(DEFAULT_DAILY_TOGGLES), 22)
         grouped = get_grouped_pipelines()
-        self.assertEqual(sum(len(v) for v in grouped.values()), 21)
+        self.assertEqual(sum(len(v) for v in grouped.values()), 22)
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

@@ -1,181 +1,203 @@
 {
-  "base_resolution": [1920, 1080],
+  "base_resolution": [1280, 720],
   "aspect_ratio": "16:9",
+  "source_repo": "https://github.com/Shinarin/MaaNikke",
   "features": [
     {
       "name": "lobby_ark_icon",
-      "scene": "大厅主界面",
-      "roi_norm": [0.72, 0.56, 0.98, 0.88],
+      "scene": "大厅主界面方舟",
+      "roi_norm": [0.61, 0.56, 0.81, 0.80],
       "ocr_fallback": ["方舟"],
-      "maa_candidates": ["ark", "方舟", "lobby_ark"]
+      "maa_candidates": ["ark.png", "ark", "方舟", "lobby_ark"]
     },
     {
       "name": "lobby_mail_icon",
-      "scene": "大厅右上角",
-      "roi_norm": [0.76, 0.01, 0.99, 0.14],
+      "scene": "大厅右上角邮箱",
+      "roi_norm": [0.94, 0.005, 0.985, 0.075],
       "ocr_fallback": ["邮箱", "邮件"],
-      "maa_candidates": ["mail", "mailbox", "邮箱"]
+      "maa_candidates": ["claimmail/mail.png", "claimmail/mail2.png", "mailbox", "mail", "邮箱"]
     },
     {
       "name": "lobby_friend_icon",
-      "scene": "大厅右上角",
-      "roi_norm": [0.76, 0.01, 0.99, 0.14],
+      "scene": "大厅右侧好友",
+      "roi_norm": [0.92, 0.20, 0.995, 0.65],
       "ocr_fallback": ["好友"],
-      "maa_candidates": ["friend", "好友"]
+      "maa_candidates": ["friendpoints/friend.png", "friend", "好友"]
     },
     {
       "name": "lobby_outpost_defense_btn",
-      "scene": "大厅左下前哨基地",
-      "roi_norm": [0.02, 0.68, 0.28, 0.90],
+      "scene": "大厅左下前哨基地防御",
+      "roi_norm": [0.21, 0.79, 0.34, 0.91],
       "ocr_fallback": ["前哨基地防御", "前哨基地"],
-      "maa_candidates": ["outpost_defense", "defense", "前哨基地防御"]
+      "maa_candidates": ["outpostdefense/intooutpostdefense1.png", "outpostdefense/intooutpostdefense1b.png", "outpost_defense", "前哨基地防御"]
     },
     {
       "name": "lobby_outpost_entry",
       "scene": "大厅前哨基地入口",
-      "roi_norm": [0.02, 0.68, 0.28, 0.90],
+      "roi_norm": [0.20, 0.79, 0.34, 0.91],
       "ocr_fallback": ["前哨基地"],
-      "maa_candidates": ["outpost", "前哨基地"]
+      "maa_candidates": ["outpostdefense/intooutpostdefense2.png", "outpostdefense/intooutpostdefense2b.png", "outpost", "前哨基地"]
     },
     {
       "name": "outpost_bulletin_icon",
       "scene": "公告栏派遣入口",
-      "roi_norm": [0.02, 0.68, 0.28, 0.90],
+      "roi_norm": [0.32, 0.76, 0.41, 0.87],
       "ocr_fallback": ["公告栏", "派遣"],
-      "maa_candidates": ["bulletin", "dispatch", "派遣", "公告栏"]
+      "maa_candidates": ["dispatchboard/intodispatchboard.png", "bulletin", "dispatch", "公告栏"]
+    },
+    {
+      "name": "outpost_loop_room_icon",
+      "scene": "前哨基地循环室",
+      "roi_norm": [0.54, 0.80, 0.60, 0.91],
+      "ocr_fallback": ["循环室"],
+      "maa_candidates": ["looproomandsync/looproom.png", "looproom", "循环室"]
+    },
+    {
+      "name": "outpost_sync_device_icon",
+      "scene": "前哨基地同步器",
+      "roi_norm": [0.36, 0.40, 0.64, 0.70],
+      "ocr_fallback": ["同步器"],
+      "maa_candidates": ["looproomandsync/sync.png", "looproomandsync/sync1.png", "sync", "同步器"]
     },
     {
       "name": "lobby_shop_icon",
-      "scene": "大厅商店入口",
-      "roi_norm": [0.72, 0.56, 0.98, 0.88],
+      "scene": "大厅道具商店入口",
+      "roi_norm": [0.60, 0.56, 0.88, 0.88],
       "ocr_fallback": ["商店"],
-      "maa_candidates": ["shop", "商店"]
+      "maa_candidates": ["gameshop.png", "freeshopdaily/basicshop.png", "shop", "商店"]
     },
     {
       "name": "lobby_cash_shop_icon",
       "scene": "大厅付费商店入口",
-      "roi_norm": [0.01, 0.16, 0.24, 0.56],
+      "roi_norm": [0.21, 0.53, 0.36, 0.69],
       "ocr_fallback": ["付费商店", "商城"],
-      "maa_candidates": ["cash_shop", "cashshop", "付费商店", "商城"]
+      "maa_candidates": ["payshop/payshop.png", "payshop/basicpack.png", "cash_shop", "付费商店"]
     },
     {
       "name": "lobby_mission_icon",
-      "scene": "大厅任务入口",
-      "roi_norm": [0.72, 0.56, 0.98, 0.88],
+      "scene": "大厅右侧任务入口",
+      "roi_norm": [0.91, 0.16, 0.995, 0.56],
       "ocr_fallback": ["任务"],
-      "maa_candidates": ["mission", "任务"]
+      "maa_candidates": ["dailyrewards/task.png", "mission", "任务"]
     },
     {
       "name": "lobby_pass_banner",
-      "scene": "大厅左侧通行证入口",
-      "roi_norm": [0.01, 0.16, 0.24, 0.56],
+      "scene": "大厅通行证入口",
+      "roi_norm": [0.86, 0.11, 0.94, 0.23],
       "ocr_fallback": ["PASS", "通行证", "任务通行证"],
-      "maa_candidates": ["pass", "mission_pass", "通行证"]
+      "maa_candidates": ["2pass.png", "3pass.png", "3passopen.png", "mission_pass", "通行证"]
     },
     {
       "name": "lobby_recruit_icon",
       "scene": "大厅招募入口",
-      "roi_norm": [0.24, 0.88, 0.76, 0.99],
+      "roi_norm": [0.24, 0.86, 0.76, 0.99],
       "ocr_fallback": ["招募", "妮姬招募"],
-      "maa_candidates": ["recruit", "gacha", "招募"]
+      "maa_candidates": ["teamrecruit/teamrecruit.png", "recruit", "gacha", "招募"]
     },
     {
       "name": "recruit_next_banner_btn",
       "scene": "招募界面切换卡池箭头",
-      "roi_norm": [0.85, 0.35, 0.99, 0.65],
+      "roi_norm": [0.89, 0.37, 0.995, 0.65],
       "ocr_fallback": [">"],
-      "maa_candidates": ["recruit_next", "banner_next", "right_arrow"]
+      "maa_candidates": ["teamrecruit/recruitswiep.png", "recruit_next", "banner_next"]
     },
     {
       "name": "lobby_nikke_nav",
       "scene": "大厅底部妮姬导航",
-      "roi_norm": [0.24, 0.88, 0.76, 0.99],
+      "roi_norm": [0.34, 0.85, 0.43, 0.995],
       "ocr_fallback": ["妮姬"],
-      "maa_candidates": ["nikke_nav", "lobby_nikke", "妮姬"]
+      "maa_candidates": ["inquiryandgift/intonikkes.png", "inquiryandgift/intonikkes2.png", "nikke_nav", "妮姬"]
     },
     {
       "name": "nikke_advise_entry",
       "scene": "妮姬界面咨询入口",
-      "roi_norm": [0.02, 0.14, 0.32, 0.30],
+      "roi_norm": [0.33, 0.16, 0.56, 0.26],
       "ocr_fallback": ["咨询"],
-      "maa_candidates": ["advise", "counsel", "咨询"]
+      "maa_candidates": ["inquiryandgift/nikkes.png", "inquiryandgift/comfirminquiry.png", "advise", "咨询"]
     },
     {
       "name": "equip_slot_head",
-      "scene": "妮姬详情头盔装备槽",
-      "roi_norm": [0.06, 0.26, 0.36, 0.74],
+      "scene": "妮姬装备栏与强化入口",
+      "roi_norm": [0.50, 0.83, 0.62, 0.995],
       "ocr_fallback": ["头盔", "装备"],
-      "maa_candidates": ["equip_head", "equipment", "装备"]
+      "maa_candidates": ["gearup/itembar.png", "gearup/gearup.png", "equip_head", "装备"]
     },
     {
       "name": "lobby_liberation_icon",
-      "scene": "前哨基地更生馆入口",
-      "roi_norm": [0.02, 0.16, 0.34, 0.62],
+      "scene": "更生馆解放完成标志",
+      "roi_norm": [0.18, 0.34, 0.84, 0.86],
       "ocr_fallback": ["更生馆", "解放"],
-      "maa_candidates": ["liberation", "rehab", "更生馆", "解放"]
+      "maa_candidates": ["gengshengguan/blue_yes.png", "gengshengguan/yellow_yes.png", "liberation", "更生馆"]
     },
     {
       "name": "ark_interception_entry",
       "scene": "方舟拦截战入口",
-      "roi_norm": [0.16, 0.20, 0.86, 0.82],
+      "roi_norm": [0.39, 0.61, 0.53, 0.97],
       "ocr_fallback": ["拦截战", "异常个体拦截战"],
-      "maa_candidates": ["interception", "拦截战"]
+      "maa_candidates": ["interception/intointerception.png", "interception", "拦截战"]
     },
     {
       "name": "ark_sim_room_entry",
       "scene": "方舟模拟室入口",
-      "roi_norm": [0.16, 0.20, 0.86, 0.82],
+      "roi_norm": [0.34, 0.33, 0.47, 0.64],
       "ocr_fallback": ["模拟室"],
-      "maa_candidates": ["simulation", "sim_room", "模拟室"]
+      "maa_candidates": ["simroom/simroom.png", "simroom/simroom-5C.png", "simulation", "模拟室"]
     },
     {
       "name": "ark_arena_entry",
       "scene": "方舟竞技场入口",
-      "roi_norm": [0.16, 0.20, 0.86, 0.82],
+      "roi_norm": [0.50, 0.41, 0.68, 0.77],
       "ocr_fallback": ["竞技场"],
-      "maa_candidates": ["arena", "竞技场"]
+      "maa_candidates": ["arena/intoarena.png", "arena", "竞技场"]
     },
     {
       "name": "ark_tribe_tower_entry",
       "scene": "方舟无限之塔入口",
-      "roi_norm": [0.16, 0.20, 0.86, 0.82],
+      "roi_norm": [0.51, 0.16, 0.63, 0.45],
       "ocr_fallback": ["无限之塔", "企业塔"],
-      "maa_candidates": ["tribe_tower", "tower", "无限之塔"]
+      "maa_candidates": ["tower/tower.png", "tribe_tower", "tower", "无限之塔"]
     },
     {
       "name": "lobby_coop_banner",
       "scene": "协同作战活动横幅",
-      "roi_norm": [0.01, 0.16, 0.24, 0.56],
+      "roi_norm": [0.005, 0.16, 0.15, 0.54],
       "ocr_fallback": ["协同作战"],
-      "maa_candidates": ["coop", "co_op", "协同作战"]
+      "maa_candidates": ["teambattle/teambattle.png", "teambattle/accept.png", "coop", "协同作战"]
     },
     {
       "name": "lobby_solo_raid_banner",
       "scene": "单人突击活动横幅",
-      "roi_norm": [0.01, 0.16, 0.24, 0.56],
+      "roi_norm": [0.005, 0.16, 0.15, 0.54],
       "ocr_fallback": ["单人突击"],
-      "maa_candidates": ["solo_raid", "soloraid", "单人突击"]
+      "maa_candidates": ["soloraid/soloraid.png", "solo_raid", "单人突击"]
     },
     {
       "name": "lobby_union_icon",
       "scene": "大厅联盟入口",
-      "roi_norm": [0.72, 0.56, 0.98, 0.88],
+      "roi_norm": [0.92, 0.20, 0.995, 0.55],
       "ocr_fallback": ["联盟", "联盟突袭"],
-      "maa_candidates": ["union", "union_raid", "联盟"]
+      "maa_candidates": ["lianmeng.png", "lianmengzhan/lianmengzhann.png", "union", "联盟"]
     },
     {
       "name": "lobby_event_banner",
-      "scene": "大厅左侧大型活动横幅",
-      "roi_norm": [0.01, 0.16, 0.24, 0.56],
+      "scene": "大厅大型活动横幅",
+      "roi_norm": [0.59, 0.59, 0.82, 0.93],
       "ocr_fallback": ["活动", "剧情活动"],
-      "maa_candidates": ["event", "story_event", "活动"]
+      "maa_candidates": ["limitedevent/newflavor/newflavor_into.png", "limitedevent/GoddessFall/GoddessFall.png", "limitedevent/LiecauseRecoil/LiecauseRecoil.png", "story_event", "活动"]
     },
     {
       "name": "popup_close_x",
-      "scene": "通用弹窗右上角",
-      "roi_norm": [0.72, 0.04, 0.97, 0.24],
+      "scene": "通用弹窗右上角关闭叉",
+      "roi_norm": [0.55, 0.03, 0.70, 0.26],
       "ocr_fallback": ["关闭"],
-      "maa_candidates": ["close", "cancel_x", "关闭"]
+      "maa_candidates": ["x.png", "x2.png", "close", "cancel_x"]
+    },
+    {
+      "name": "popup_notice_icon",
+      "scene": "登录公告提示标识",
+      "roi_norm": [0.22, 0.20, 0.78, 0.80],
+      "ocr_fallback": ["公告", "今日不再显示"],
+      "maa_candidates": ["notice.png", "dont_show", "today_no_show"]
     },
     {
       "name": "popup_dont_show_today",
@@ -186,17 +208,17 @@
     },
     {
       "name": "nav_home_btn",
-      "scene": "子页面返回大厅",
-      "roi_norm": [0.01, 0.01, 0.16, 0.12],
+      "scene": "子页面左下返回大厅",
+      "roi_norm": [0.00, 0.89, 0.13, 0.995],
       "ocr_fallback": ["大厅", "主界面"],
-      "maa_candidates": ["home", "lobby_btn", "大厅"]
+      "maa_candidates": ["homebutton1.png", "homebutton2.png", "home", "lobby_btn"]
     },
     {
       "name": "nav_back_btn",
       "scene": "子页面返回上级",
-      "roi_norm": [0.01, 0.01, 0.16, 0.12],
+      "roi_norm": [0.00, 0.86, 0.16, 0.995],
       "ocr_fallback": ["返回"],
-      "maa_candidates": ["back", "return", "返回"]
+      "maa_candidates": ["back.png", "back2.png", "return", "返回"]
     },
     {
       "name": "mail_claim_all_btn",
@@ -207,10 +229,10 @@
     },
     {
       "name": "friend_send_all_btn",
-      "scene": "好友底部操作栏",
-      "roi_norm": [0.25, 0.78, 0.85, 0.96],
+      "scene": "好友界面提示与赠送栏",
+      "roi_norm": [0.43, 0.09, 0.58, 0.16],
       "ocr_fallback": ["赠送", "一键赠送"],
-      "maa_candidates": ["friend_send", "send_point", "赠送"]
+      "maa_candidates": ["friendpoints/friendwin.png", "friend_send", "send_point"]
     },
     {
       "name": "outpost_claim_reward_btn",
@@ -221,45 +243,59 @@
     },
     {
       "name": "outpost_wipe_out_btn",
-      "scene": "前哨基地防御弹窗",
-      "roi_norm": [0.26, 0.66, 0.74, 0.86],
+      "scene": "一举歼灭耗钻检测标识",
+      "roi_norm": [0.47, 0.74, 0.63, 0.79],
       "ocr_fallback": ["一举歼灭"],
-      "maa_candidates": ["wipe_out", "一举歼灭"]
+      "maa_candidates": ["outpostdefense/spendzuan.png", "wipe_out", "一举歼灭"]
     },
     {
       "name": "dispatch_claim_all_btn",
-      "scene": "公告栏派遣界面",
+      "scene": "公告栏派遣退出与收取",
       "roi_norm": [0.26, 0.76, 0.76, 0.94],
       "ocr_fallback": ["全部领取", "全部收取"],
-      "maa_candidates": ["dispatch_claim", "全部收取"]
+      "maa_candidates": ["dispatchboard/exitdispatch.png", "dispatch_claim", "全部收取"]
     },
     {
       "name": "dispatch_send_all_btn",
       "scene": "公告栏派遣界面",
       "roi_norm": [0.26, 0.76, 0.76, 0.94],
       "ocr_fallback": ["全部派遣", "一键派遣"],
-      "maa_candidates": ["dispatch_all", "全部派遣"]
+      "maa_candidates": ["dispatchboard/dispatch.png", "dispatch_all", "全部派遣"]
     },
     {
       "name": "shop_diamond_icon",
-      "scene": "商店货币安全检测",
-      "roi_norm": [0.18, 0.42, 0.82, 0.78],
+      "scene": "商店货币安全检测（钻石/珠宝）",
+      "roi_norm": [0.05, 0.47, 0.99, 0.91],
       "ocr_fallback": ["珠宝", "钻石"],
-      "maa_candidates": ["gem", "diamond", "珠宝", "钻石"]
+      "maa_candidates": ["freeshopdaily/gameshopdiamonds.png", "gem", "diamond", "珠宝"]
+    },
+    {
+      "name": "shop_free_icon",
+      "scene": "商店免费(0钻)商品标识",
+      "roi_norm": [0.46, 0.74, 0.65, 0.92],
+      "ocr_fallback": ["免费"],
+      "maa_candidates": ["freeshopdaily/0zuanpay.png", "free_item", "0zuan"]
     },
     {
       "name": "shop_credit_icon",
-      "scene": "商店货币安全检测",
+      "scene": "商店信用点货币检测",
       "roi_norm": [0.18, 0.42, 0.82, 0.78],
       "ocr_fallback": ["信用点"],
-      "maa_candidates": ["credit", "信用点"]
+      "maa_candidates": ["limitedevent/limitedevent_credit.png", "credit", "信用点"]
     },
     {
       "name": "shop_refresh_btn",
-      "scene": "普通商店顶部刷新",
-      "roi_norm": [0.70, 0.24, 0.88, 0.36],
+      "scene": "普通商店免费刷新按钮",
+      "roi_norm": [0.17, 0.41, 0.22, 0.49],
       "ocr_fallback": ["刷新"],
-      "maa_candidates": ["shop_refresh", "refresh", "刷新"]
+      "maa_candidates": ["freeshopdaily/freeshoprefresh.png", "shop_refresh", "refresh"]
+    },
+    {
+      "name": "shop_arena_tab",
+      "scene": "道具商店左侧竞技场商店页签",
+      "roi_norm": [0.00, 0.35, 0.05, 0.86],
+      "ocr_fallback": ["竞技场商店", "竞技场"],
+      "maa_candidates": ["freeshopdaily/arenashop.png", "arena_shop"]
     },
     {
       "name": "mission_claim_all_btn",
@@ -267,6 +303,13 @@
       "roi_norm": [0.55, 0.80, 0.88, 0.95],
       "ocr_fallback": ["全部领取", "一键领取"],
       "maa_candidates": ["mission_claim", "全部领取"]
+    },
+    {
+      "name": "ui_red_dot",
+      "scene": "通用红点提示",
+      "roi_norm": [0.95, 0.08, 0.995, 0.37],
+      "ocr_fallback": [],
+      "maa_candidates": ["redpoint.png", "redpoint2.png"]
     }
   ]
 }

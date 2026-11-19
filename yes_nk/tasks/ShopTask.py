@@ -80,11 +80,11 @@ class ShopTask(BaseNikkeTask):
 
     def _scan_arena_shop(self) -> int:
         """可选：切换至竞技场商店，使用竞技场兑换券购买技能手册（绝不点击钻石商品）。"""
-        switched = self.click_ocr(
+        switched = self.click_feature_or_ocr(
+            "shop_arena_tab",
             ["竞技场商店", "竞技场"],
-            NikkeROI.CASH_SHOP_LEFT_TABS,
+            NikkeROI.SHOP_SIDE_TABS,
             wait_after=1.0,
-            name="arena_shop_tab",
         )
         if not switched:
             self.log_info("未检测到竞技场商店页签，跳过竞技场商店采购")

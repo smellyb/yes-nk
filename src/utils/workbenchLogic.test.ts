@@ -55,8 +55,8 @@ test('reorderTasks moves items safely within bounds', () => {
   assert.equal(unchanged[0].id, INITIAL_TASKS[0].id);
 });
 
-test('buildYesNkExportConfig emits Python-compatible desktop_clone, daily_toggles, and all 21 pipelines', () => {
-  assert.equal(INITIAL_TASKS.length, 21);
+test('buildYesNkExportConfig emits Python-compatible desktop_clone, daily_toggles, and all 22 pipelines', () => {
+  assert.equal(INITIAL_TASKS.length, 22);
   const exported = buildYesNkExportConfig(
     INITIAL_SETTINGS,
     INITIAL_DESKTOP_CLONE,
@@ -67,9 +67,10 @@ test('buildYesNkExportConfig emits Python-compatible desktop_clone, daily_toggle
   assert.equal(exported.desktop_clone.run_mode, 'desktop_clone');
   assert.equal(exported.desktop_clone.resolved_interaction, 'ForegroundPostMessage');
   assert.equal(exported.client.exe, 'nikke.exe');
-  assert.equal(exported.onetime_tasks.length, 21);
-  assert.equal(Object.keys(exported.daily_toggles).length, 21);
+  assert.equal(exported.onetime_tasks.length, 22);
+  assert.equal(Object.keys(exported.daily_toggles).length, 22);
   assert.equal(exported.daily_toggles['拦截战挑战与快速扫荡'], true);
+  assert.equal(exported.daily_toggles['同步器与循环室升级'], false);
   assert.equal(exported.daily_toggles['大型活动刷取与签到'], false);
   assert.equal(exported.onetime_tasks[0].module, INITIAL_TASKS[0].pythonModule);
 });

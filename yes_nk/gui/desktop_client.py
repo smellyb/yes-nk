@@ -225,7 +225,7 @@ def launch_desktop_client() -> int:
 
         def _on_nav_changed(self, idx: int) -> None:
             titles = [
-                "国服全量日常一条龙（21 条 MaaNikke 转换流水线）",
+                "国服全量日常一条龙（22 条 MaaNikke 转换流水线）",
                 "仿 YES-BD2 桌面分身与 1080P 适配",
                 "MaaNikke 素材与 Pipeline 导入转换",
                 "桌面客户端运行日志",
@@ -246,7 +246,7 @@ def launch_desktop_client() -> int:
             card_layout.setSpacing(10)
 
             tip = QLabel(
-                "已完整接入 Shinarin/MaaNikke 全部 21 条流水线（全部转为 YES-NK 混合识别状态机）。"
+                "已完整接入 Shinarin/MaaNikke 全部 22 条流水线并预置 40 项 COCO 模板。"
                 "勾选需要执行的项目，然后点击启动："
             )
             tip.setWordWrap(True)
@@ -262,7 +262,7 @@ def launch_desktop_client() -> int:
             btn_preset_default.clicked.connect(lambda: self._apply_daily_preset("default"))
             preset_row.addWidget(btn_preset_default)
 
-            btn_preset_all = QPushButton("全部启用 (21项)")
+            btn_preset_all = QPushButton("全部启用 (22项)")
             btn_preset_all.clicked.connect(lambda: self._apply_daily_preset("all"))
             preset_row.addWidget(btn_preset_all)
             preset_row.addStretch(1)
@@ -415,8 +415,8 @@ def launch_desktop_client() -> int:
             c_layout.setSpacing(10)
 
             desc = QLabel(
-                "1. 选择本地 Shinarin/MaaNikke 项目的图像目录（如 MaaNikke\\resource\\base\\image），"
-                "自动按 assets/coco_manifest.json 批量生成 38 项特征的 assets/result.json："
+                "1. 仓库已预置从 Shinarin/MaaNikke 转换好的 40 项 1280×720 基准 COCO 模板；"
+                "若日后 MaaNikke 更新素材，可重新选择图像目录刷新 44 项特征："
             )
             desc.setWordWrap(True)
             desc.setStyleSheet("color:#475569;")
@@ -554,8 +554,8 @@ def launch_desktop_client() -> int:
                 return
             report = self.controller.import_maa_assets(maa_path)
             summary = (
-                f"导入完成！已匹配 {len(report.matched_features)} / 38 项特征，"
-                f"剩余 {len(report.missing_features)} 项将自动使用 ROI OCR 兜底。"
+                f"导入完成！已匹配 {len(report.matched_features)} / 44 项特征，"
+                f"剩余 {len(report.missing_features)} 项纯文字按钮将自动使用 ROI OCR 兜底。"
             )
             self.maa_result_label.setText(summary)
             self._append_log(summary)

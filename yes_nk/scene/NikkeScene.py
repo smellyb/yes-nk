@@ -16,32 +16,33 @@ NormalizedBox = Tuple[float, float, float, float]
 
 @dataclass(frozen=True)
 class NikkeROI:
-    # --- 大厅与通用导航 ---
-    LOBBY_BOTTOM_NAV: NormalizedBox = (0.24, 0.88, 0.76, 0.99)
-    LOBBY_TOP_LEFT: NormalizedBox = (0.01, 0.01, 0.30, 0.24)
-    LOBBY_TOP_RIGHT: NormalizedBox = (0.76, 0.01, 0.99, 0.16)
-    LOBBY_LEFT_BANNERS: NormalizedBox = (0.01, 0.18, 0.24, 0.68)
-    LOBBY_OUTPOST_ENTRY: NormalizedBox = (0.02, 0.68, 0.28, 0.90)
-    LOBBY_RIGHT_SHORTCUTS: NormalizedBox = (0.72, 0.50, 0.98, 0.88)
-    TOP_LEFT_BACK: NormalizedBox = (0.01, 0.01, 0.16, 0.12)
+    # --- 大厅与通用导航（已按 MaaNikke 1280x720 实测 ROI 校准） ---
+    LOBBY_BOTTOM_NAV: NormalizedBox = (0.24, 0.85, 0.76, 0.995)
+    LOBBY_TOP_LEFT: NormalizedBox = (0.00, 0.00, 0.30, 0.24)
+    LOBBY_TOP_RIGHT: NormalizedBox = (0.76, 0.00, 0.995, 0.66)
+    LOBBY_LEFT_BANNERS: NormalizedBox = (0.00, 0.14, 0.36, 0.68)
+    LOBBY_OUTPOST_ENTRY: NormalizedBox = (0.02, 0.66, 0.42, 0.94)
+    LOBBY_RIGHT_SHORTCUTS: NormalizedBox = (0.58, 0.12, 0.995, 0.90)
+    TOP_LEFT_BACK: NormalizedBox = (0.00, 0.00, 0.20, 0.995)
     FULL_CENTER: NormalizedBox = (0.15, 0.18, 0.85, 0.86)
 
     # --- 弹窗与战斗通用 ---
-    POPUP_TOP_RIGHT_CLOSE: NormalizedBox = (0.72, 0.04, 0.97, 0.24)
+    POPUP_TOP_RIGHT_CLOSE: NormalizedBox = (0.55, 0.02, 0.98, 0.26)
     POPUP_CENTER_DIALOG: NormalizedBox = (0.22, 0.24, 0.78, 0.82)
     POPUP_BOTTOM_DISMISS: NormalizedBox = (0.28, 0.78, 0.72, 0.97)
     BATTLE_START_BTN: NormalizedBox = (0.32, 0.74, 0.76, 0.94)
     BATTLE_RESULT_AREA: NormalizedBox = (0.25, 0.72, 0.75, 0.96)
 
     # --- 邮箱 / 好友 / 通行证 / 任务 ---
-    BOTTOM_ACTION_BAR: NormalizedBox = (0.25, 0.78, 0.85, 0.96)
+    BOTTOM_ACTION_BAR: NormalizedBox = (0.25, 0.76, 0.85, 0.97)
     MISSION_TABS: NormalizedBox = (0.18, 0.12, 0.82, 0.24)
     MISSION_CLAIM_ALL: NormalizedBox = (0.55, 0.80, 0.88, 0.95)
-    PASS_REWARD_AREA: NormalizedBox = (0.18, 0.18, 0.84, 0.92)
+    PASS_REWARD_AREA: NormalizedBox = (0.18, 0.10, 0.96, 0.92)
 
-    # --- 前哨基地与派遣 ---
+    # --- 前哨基地、派遣与循环室/同步器 ---
     OUTPOST_REWARD_ACTIONS: NormalizedBox = (0.26, 0.66, 0.74, 0.86)
     DISPATCH_ACTIONS: NormalizedBox = (0.26, 0.76, 0.76, 0.94)
+    OUTPOST_FACILITIES: NormalizedBox = (0.04, 0.14, 0.92, 0.92)
 
     # --- 商店（普通 / 竞技场 / 付费商店） ---
     SHOP_SIDE_TABS: NormalizedBox = (0.02, 0.14, 0.20, 0.86)
