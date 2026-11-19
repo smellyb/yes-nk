@@ -10,9 +10,10 @@
    - 静态图标使用 `ok-script` 标准 COCO 模板匹配（`find_one` / `assets/result.json`）；
    - 动态按钮与文字使用归一化局部区域 OCR（`box_of_screen` + RapidOCR），彻底规避大厅动态 Live2D 立绘、换装与弹窗干扰；
    - 全部核心操作内置大厅锚点校验（`ensure_in_lobby`）与安全护栏（商店与一举歼灭严禁误花珠宝/钻石）。
-2. **仿 YES-BD2 桌面分身（不抢主桌面键鼠）**
-   - 基于 Win32 `CreateDesktopW` / `SwitchDesktop` 隔离桌面会话运行，挂机清日常的同时不影响主桌面正常办公与娱乐；
-   - 内置三档运行模式可切换：`桌面分身模式（首选）`、`后台消息模式 (PostMessage)`、`前台兼容兜底模式`。
+2. **与 YES-BD2 完全一致的桌面分身（独立窗口 · 最小化继续跑 · 不抢主桌面键鼠）**
+   - 完整复刻 YES-BD2 的 **Windows 子会话（`WTSEnableChildSessions`）+ 独立 RDP 窗口 (`CloneDesktop.exe`)** 架构（需 Windows 10/11 专业版/企业版/教育版）；
+   - 通过 `tools/clone_desktop/setup.ps1` 一次性编译生成分身窗口程序并开启子会话，分身内固定 `1920×1080` 画面且最小化后仍持续渲染（`RemoteDesktop_SuppressWhenMinimized = 2`），同时支持一键**还原桌面分身**（`-Undo`）；
+   - 内置三档运行模式可切换：`桌面分身窗口模式（首选）`、`后台消息模式 (PostMessage · 家庭版可用)`、`前台兼容兜底模式`。
 3. **1080P 显示器双轨无偏移适配**
    - **推荐 A（桌面分身内）**：在分身桌面中让游戏以 **`1920×1080` 无边框全屏** 运行，客户区 1:1 零缩放，完全不受任务栏挤压；
    - **推荐 B（1080P 主桌面窗口化）**：以 **`1600×900`** 或 **`1280×720`**（严格 16:9 客户区）运行，自动按比例缩放所有 ROI 与 COCO 模板，并主动启用 Per-Monitor DPI v2 感知。
@@ -53,8 +54,8 @@
 ### 方式 A：双击脚本一键启动原生桌面客户端（源码用户推荐）
 
 将仓库拉取到纯英文路径（例如 `D:\YES-NK`），直接双击：
-- **`scripts\start_yes_nk.bat`**：首次自动创建 `.venv` 并安装依赖，弹出原生 PySide6 Fluent 桌面客户端（分组勾选全部 21 条日常流水线、一键开启/切回桌面分身、一键校准 1080P 窗口为 `1600×900`、图形化导入 MaaNikke 图像与 Pipeline）。
-- **`scripts\start_desktop_clone.bat`**：一键直接进入仿 YES-BD2 的独立桌面分身。
+- **`scripts\start_yes_nk.bat`**：首次自动创建 `.venv` 并安装依赖，弹出原生 PySide6 Fluent 桌面客户端（分组勾选全部 22 条日常流水线、YES-BD2 同款桌面分身 6 项自动检查与一键设定/启动/还原、一键校准 1080P 窗口为 `1600×900`、图形化导入 MaaNikke 图像与 Pipeline）。
+- **`scripts\start_desktop_clone.bat`**：一键打开 YES-BD2 同款独立桌面分身窗口并自动在分身内运行日常。
 
 ### 方式 B：打包免安装 `YES-NK.exe` 或使用 GitHub Actions 自动构建
 
@@ -69,11 +70,18 @@ pip install -r requirements.txt
 # 启动原生桌面客户端窗口
 python desktop_launcher.py
 
-# 或直接启动 ok-script 核心界面
-python main.py
+# 第一次设定桌面分身（编译 CloneDesktop.exe 并开启 Windows 子会话）
+python main.py --setup-clone
 
-# 仿 YES-BD2 在独立桌面分身中启动（不抢占主桌面键鼠）
+# 在与 YES-BD2 一致的独立桌面分身窗口中启动（不抢占主桌面键鼠）
 python main.py --desktop-clone
+
+# 结束桌面分身 / 还原系统设定
+python main.py --end-clone
+python main.py --undo-clone
+
+# 直接在主桌面启动 ok-script 核心界面
+python main.py
 
 # 调试模式（输出详细 OCR / 模板匹配日志）
 python main_debug.py
@@ -85,7 +93,7 @@ python tools/convert_maa_assets.py --maa-dir D:\MaaNikke\resource\base\image --m
 python tools/check_env_1080p.py --width 1600 --height 900 --dpi 125
 ```
 
-> 若从桌面客户端或 Web 配套工作台保存/导出了 `yes_nk_config.json` 并放在仓库根目录，`yes_nk/config.py` 与 `DailyTask` 启动时会自动读取覆盖全部 21 条任务开关、桌面分身与窗口设置。
+> 若从桌面客户端或 Web 配套工作台保存/导出了 `yes_nk_config.json` 并放在仓库根目录，`yes_nk/config.py` 与 `DailyTask` 启动时会自动读取覆盖全部 22 条任务开关、桌面分身与窗口设置。
 
 ---
 

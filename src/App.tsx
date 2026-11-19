@@ -58,7 +58,7 @@ const MODE_LABELS: Record<RecognitionMode, string> = {
 };
 
 const RUN_MODE_SHORT: Record<DesktopCloneSettings['run_mode'], string> = {
-  desktop_clone: '桌面分身 (CreateDesktopW)',
+  desktop_clone: '桌面分身 (Windows 子会话)',
   background_post_message: '后台消息 (PostMessage)',
   foreground_compat: '前台兼容 (Pynput)',
 };

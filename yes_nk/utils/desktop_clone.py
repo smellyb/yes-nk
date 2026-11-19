@@ -1,15 +1,20 @@
-"""仿 YES-BD2 的 Windows 桌面分身 (CreateDesktopW) 隔离运行管理器。
+"""YES-NK 桌面分身核心模块（与 nobell001/YES-BD2 完全一致的 Windows Child Session 架构）。
 
-修复要点（解决“闪一下黑屏什么都没有”问题）：
-1. 显式声明 64 位 Win32 ctypes 函数签名（argtypes / restype = HANDLE），避免 HDESK 句柄被截断为 32 位 c_int；
-2. 创建桌面采用 GENERIC_ALL (0x10000000)，切回主桌面仅请求最小权限 DESKTOP_SWITCHDESKTOP (0x0100)，避免 Win10/11 UAC 拒绝；
-3. CreateProcessW 显式传入工作目录 lpCurrentDirectory，并在 SwitchDesktop 前校验子进程存活与就绪状态，杜绝切入空黑屏；
-4. 配合 yes_nk.gui.clone_host 在分身桌面内常驻可视化控制台 + 全局切回热键 (Ctrl+Alt+F12)，维持分身会话生命周期并提供完整错误日志。
+设计原理：
+- 基于 Windows 10/11 专业版内置的终端服务子会话 (WTSEnableChildSessions) + 本地 RDP 窗口
+  (tools/clone_desktop/CloneDesktop.exe)，在主桌面上打开一个独立的 1920x1080 虚拟桌面窗口。
+- 最小化分身窗口后仍保持画面渲染（RemoteDesktop_SuppressWhenMinimized = 2），脚本在分身内
+  操作游戏完全不抢占主桌面鼠标键盘。
+- 登录分身后，CloneDesktop.exe 通过一次性 Windows 任务计划程序 (TASK_RUN_USE_SESSION_ID)
+  在子会话中免密拉起 YES-NK，并自动清理子会话内弹出的第三方开机自启程序。
+- 支持一键「第一次设定」(setup.ps1) 与一键「还原桌面分身」(setup.ps1 -Undo)。
 """
 
 from __future__ import annotations
 
+import ctypes
 from dataclasses import dataclass
+import functools
 import json
 import os
 from pathlib import Path
@@ -27,67 +32,150 @@ VALID_RUN_MODES: tuple[RunMode, ...] = (
     "foreground_compat",
 )
 
-# Win32 Desktop access masks
-DESKTOP_READOBJECTS = 0x0001
-DESKTOP_CREATEWINDOW = 0x0002
-DESKTOP_CREATEMENU = 0x0004
-DESKTOP_HOOKCONTROL = 0x0008
-DESKTOP_JOURNALRECORD = 0x0010
-DESKTOP_JOURNALPLAYBACK = 0x0020
-DESKTOP_ENUMERATE = 0x0040
-DESKTOP_WRITEOBJECTS = 0x0080
-DESKTOP_SWITCHDESKTOP = 0x0100
-STANDARD_RIGHTS_REQUIRED = 0x000F0000
-DESKTOP_ALL_ACCESS = STANDARD_RIGHTS_REQUIRED | 0x01FF
-GENERIC_ALL = 0x10000000
 
-# Win32 Process creation / wait flags
-CREATE_NEW_CONSOLE = 0x00000010
-CREATE_NEW_PROCESS_GROUP = 0x00000200
-PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-STILL_ACTIVE = 259
-WAIT_OBJECT_0 = 0x00000000
-WAIT_TIMEOUT = 0x00000102
+def _resolve_roots() -> tuple[Path, Path]:
+    if getattr(sys, "frozen", False):
+        app_root = Path(sys.executable).resolve().parent
+        res_root = Path(getattr(sys, "_MEIPASS", app_root)).resolve()
+    else:
+        app_root = Path(__file__).resolve().parents[2]
+        res_root = app_root
+    return app_root, res_root
 
-# Win32 RegisterHotKey modifiers
-MOD_ALT = 0x0001
-MOD_CONTROL = 0x0002
-MOD_SHIFT = 0x0004
-MOD_WIN = 0x0008
-MOD_NOREPEAT = 0x4000
+
+APP_ROOT, RESOURCE_ROOT = _resolve_roots()
+SETUP_SCRIPT = RESOURCE_ROOT / "tools" / "clone_desktop" / "setup.ps1"
+VIEWER_SOURCE = RESOURCE_ROOT / "tools" / "clone_desktop" / "CloneDesktop.cs"
+DATA_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "yes-nk" / "clone-desktop"
+VIEWER = DATA_DIR / "CloneDesktop.exe"
+SETUP_STATE = DATA_DIR / "setup-state.json"
+SETUP_LOG = DATA_DIR / "setup.log"
+VIEWER_LOG = DATA_DIR / "viewer.log"
+LAUNCH_RESULT = DATA_DIR / "launch-result.txt"
+END_REQUEST = DATA_DIR / "end-request.txt"
+END_JUST_CLOSE = "end"
+END_MOVE_TO_DESKTOP = "move"
+JOB_FILE = DATA_DIR / "pending-run.json"
+STATUS_FILE = DATA_DIR / "clone-status.json"
+CONTROL_FILE = DATA_DIR / "clone-control.txt"
+STARTUP_LIST = DATA_DIR / "startup-programs.txt"
+STARTUP_TASK_LIST = DATA_DIR / "startup-tasks.txt"
+
+SAVED_SIGN_IN_TARGET = "yes-nk/clone-desktop"
+REMOTE_DESKTOP_SERVICE_KEY = r"SYSTEM\CurrentControlSet\Services\TermService"
+HELLO_KEY = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\PasswordLess\Device"
+CONNECT_FAILURES = frozenset({260, 264, 516, 520, 772, 1028, 1288, 2308})
+
+GAME_NAMES = {"nikke.exe", "wegame.exe", "tgp_daemon.exe"}
+KEEP_NAMES = {
+    "python.exe",
+    "pythonw.exe",
+    "yes-nk.exe",
+    "nikke.exe",
+    "wegame.exe",
+    "tgp_daemon.exe",
+    "explorer.exe",
+    "conhost.exe",
+    "cmd.exe",
+}
+SIGN_IN_PARENTS = {"explorer.exe", "userinit.exe"}
+TASK_PARENTS = {"svchost.exe", "taskhostw.exe"}
+_RUN_KEYS = (
+    r"Software\Microsoft\Windows\CurrentVersion\Run",
+    r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run",
+)
+
+LOGOFF_WAIT_SECONDS = 60.0
+END_REQUEST_WAIT_SECONDS = 10.0
+
+# 最近一次 open_viewer() 失败原因："" | "declined" | "blocked" | "unsupported"
+open_failure: dict[str, str] = {"why": ""}
+
+OK, WARN, BAD = "ok", "warn", "bad"
 
 
 @dataclass(frozen=True)
 class DesktopCloneConfig:
     run_mode: RunMode = "desktop_clone"
     desktop_name: str = "YES_NK_Desktop"
-    switch_hotkey: str = "Ctrl+Alt+F12"
-    auto_close_desktop_on_exit: bool = True
-    launch_explorer_in_clone: bool = False
+    switch_hotkey: str = "Minimize / Tray"
+    auto_close_desktop_on_exit: bool = False
+    launch_explorer_in_clone: bool = True
     prefer_borderless_1080p: bool = True
     game_exe_path: str = ""
 
     def sanitized_desktop_name(self) -> str:
-        """确保传给 CreateDesktopW 的桌面名称仅包含安全 ASCII 字符。"""
         cleaned = re.sub(r"[^A-Za-z0-9_-]", "_", self.desktop_name).strip("_")
         return cleaned[:48] or "YES_NK_Desktop"
 
 
 @dataclass(frozen=True)
-class DesktopCloneResult:
-    ok: bool
-    pid: Optional[int] = None
-    switched: bool = False
-    reused_existing: bool = False
-    error_code: int = 0
-    error_message: str = ""
-    log_path: str = ""
+class CloneCheck:
+    """与 YES-BD2 clone_guide_page.py 完全一致的本机桌面分身自检条目。"""
+
+    label: str
+    tone: str  # "ok" | "warn" | "bad"
+    text: str
+    action: str = ""  # "" | "第一次设定" | "帮我打开" | "帮我关掉"
+
+
+CLONE_TROUBLESHOOT_QA: tuple[tuple[str, tuple[str, ...], bool], ...] = (
+    (
+        "提示「登录失败」",
+        (
+            "密码请填写上方「要打的密码」对应那组，不要填 PIN 码。",
+            "平时只用 PIN 或人脸开机时：先按 Win+L，点钥匙图标用密码登录电脑一次。",
+            "再回到 YES-NK 点击「在桌面分身跑」。",
+        ),
+        False,
+    ),
+    (
+        "提示「连不上桌面分身」（代码 516 等）",
+        (
+            "关闭分身窗口与 YES-NK，重新打开后再点一次「在桌面分身跑」。",
+            "重启电脑后再试（首次开启子会话常需要重启才能生效）。",
+            "如果装过 RDP Wrapper 或用过系统精简优化工具，远程桌面服务可能受损。",
+        ),
+        False,
+    ),
+    (
+        "提示「分身程序不见了」",
+        (
+            "在杀毒软件（如 360、火绒、Windows Defender）中把分身文件夹加入信任区。",
+            "点击上方「第一次设定」重新编译生成 CloneDesktop.exe。",
+        ),
+        True,
+    ),
+    (
+        "为什么提示 Windows 家庭版不能用",
+        (
+            "Windows 子会话桌面分身需要 Windows 10/11 专业版、企业版或教育版。",
+            "家庭版请直接选择「后台窗口消息模式 (PostMessage)」在主桌面挂机。",
+        ),
+        False,
+    ),
+    (
+        "账户没有设置密码",
+        (
+            "Windows 规定无密码账户不能登录本地子会话桌面分身。",
+            "请到系统「设置 > 账户 > 登录选项 > 密码」添加一个密码后再试。",
+        ),
+        False,
+    ),
+    (
+        "还是进不去 / 查看日志",
+        (
+            "点击下方按钮打开分身文件夹，检查 viewer.log 与 setup.log 里的具体错误码。",
+            "若确认是网络/远程桌面策略限制，可尝试命令行运行 setup.ps1 -AllowRdp。",
+        ),
+        True,
+    ),
+)
 
 
 def resolve_ok_interaction_class(run_mode: RunMode) -> str:
     """根据运行模式返回 ok-script 推荐的 Interaction 交互后端名称。"""
     if run_mode == "desktop_clone":
-        # 分身桌面内游戏享有独立前台上下文，ForegroundPostMessage 兼容性与拖拽精度最高
         return "ForegroundPostMessage"
     if run_mode == "background_post_message":
         return "PostMessage"
@@ -100,208 +188,830 @@ def validate_run_mode(mode: str) -> RunMode:
     return "desktop_clone"
 
 
-def build_command_line(argv: list[str]) -> str:
-    """将参数列表安全转义为 Windows CreateProcessW 可解析的命令行字符串。"""
-    return subprocess.list2cmdline(argv)
+def _read_hklm(path: str, name: str) -> Any:
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path) as key:
+            return winreg.QueryValueEx(key, name)[0]
+    except (ImportError, OSError):
+        return None
 
 
-def parse_hotkey_spec(hotkey: str) -> tuple[int, int]:
-    """将类似 'Ctrl+Alt+F12' 的热键配置解析为 Win32 (modifiers, vk_code)。"""
-    raw = (hotkey or "Ctrl+Alt+F12").strip()
-    tokens = [tok.strip().upper() for tok in raw.split("+") if tok.strip()]
-    modifiers = MOD_NOREPEAT
-    vk_code = 0x7B  # VK_F12 默认兜底
-
-    special_vk = {
-        "HOME": 0x24,
-        "END": 0x23,
-        "ESC": 0x1B,
-        "ESCAPE": 0x1B,
-        "TAB": 0x09,
-        "SPACE": 0x20,
-        "INSERT": 0x2D,
-        "DELETE": 0x2E,
-        "PGUP": 0x21,
-        "PGDN": 0x22,
-    }
-
-    for tok in tokens:
-        if tok in ("CTRL", "CONTROL"):
-            modifiers |= MOD_CONTROL
-        elif tok == "ALT":
-            modifiers |= MOD_ALT
-        elif tok == "SHIFT":
-            modifiers |= MOD_SHIFT
-        elif tok in ("WIN", "SUPER", "META"):
-            modifiers |= MOD_WIN
-        elif tok.startswith("F") and tok[1:].isdigit():
-            fn_num = int(tok[1:])
-            if 1 <= fn_num <= 24:
-                vk_code = 0x6F + fn_num  # VK_F1 = 0x70
-        elif tok in special_vk:
-            vk_code = special_vk[tok]
-        elif len(tok) == 1 and ("A" <= tok <= "Z" or "0" <= tok <= "9"):
-            vk_code = ord(tok)
-
-    # 避免无修饰键的裸键冲突
-    if modifiers == MOD_NOREPEAT:
-        modifiers |= MOD_CONTROL | MOD_ALT
-    return modifiers, vk_code
+def supported() -> bool:
+    """Windows 家庭版 (EditionID Core*) 不支持子会话桌面分身。"""
+    if sys.platform != "win32":
+        return False
+    edition = _read_hklm(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "EditionID")
+    return bool(edition) and not str(edition).startswith("Core")
 
 
-def is_windows_admin() -> bool:
-    """检测当前进程是否具备 Windows 管理员权限（WeGame / ACE 提权环境下建议开启）。"""
+def child_sessions_enabled() -> bool:
+    """检查 Windows 子会话是否已通过 WTSEnableChildSessions 开启。"""
     if sys.platform != "win32":
         return False
     try:
-        import ctypes
-
-        shell32 = ctypes.WinDLL("shell32", use_last_error=True)
-        shell32.IsUserAnAdmin.argtypes = []
-        shell32.IsUserAnAdmin.restype = ctypes.c_int
-        return bool(shell32.IsUserAnAdmin())
-    except Exception:
+        enabled = ctypes.c_int(0)
+        ok = ctypes.windll.wtsapi32.WTSIsChildSessionsEnabled(ctypes.byref(enabled))
+        return bool(ok) and bool(enabled.value)
+    except (AttributeError, OSError):
         return False
 
 
-def _format_win32_error(err_code: int) -> str:
-    if not err_code:
-        return ""
-    if sys.platform == "win32":
-        try:
-            import ctypes
+def ready() -> bool:
+    """一次性设定是否已完成：CloneDesktop.exe 存在且子会话已开启。"""
+    return VIEWER.exists() and child_sessions_enabled()
 
-            return f"Win32 Error {err_code}: {ctypes.FormatError(err_code).strip()}"
+
+def viewer_removed() -> bool:
+    """曾完成设定但 CloneDesktop.exe 不见了（常见于 360 / 火绒误删）。"""
+    return SETUP_STATE.exists() and not VIEWER.exists()
+
+
+def remote_desktop_service() -> str:
+    """检查远程桌面服务 (TermService) 状态：ok / disabled / missing / replaced / unknown。"""
+    if sys.platform != "win32":
+        return "unknown"
+    try:
+        import winreg  # noqa: F401
+    except ImportError:
+        return "unknown"
+    start = _read_hklm(REMOTE_DESKTOP_SERVICE_KEY, "Start")
+    if start is None and _read_hklm(REMOTE_DESKTOP_SERVICE_KEY, "ImagePath") is None:
+        return "missing"
+    if start == 4:
+        return "disabled"
+    dll = _read_hklm(REMOTE_DESKTOP_SERVICE_KEY + r"\Parameters", "ServiceDll")
+    if isinstance(dll, str) and dll and not dll.lower().rstrip('"').endswith("termsrv.dll"):
+        return "replaced"
+    return "ok"
+
+
+def _wait_until(predicate, timeout: float, poll: float = 0.5) -> bool:
+    deadline = time.monotonic() + max(0.5, timeout)
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(poll)
+    return bool(predicate())
+
+
+def is_admin() -> bool:
+    if sys.platform != "win32":
+        return False
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except (AttributeError, OSError):
+        return False
+
+
+def enable_remote_desktop_service(wait: float = 20.0) -> bool:
+    """将远程桌面服务 (TermService) 恢复为系统默认的手动启动（不开放外部 RDP）。"""
+    if sys.platform != "win32":
+        return False
+    arguments = ["config", "TermService", "start=", "demand"]
+    if is_admin():
+        try:
+            subprocess.run(
+                ["sc.exe", *arguments],
+                capture_output=True,
+                timeout=30,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return remote_desktop_service() != "disabled"
+    try:
+        shell_execute = ctypes.windll.shell32.ShellExecuteW
+        shell_execute.restype = ctypes.c_void_p
+        result = shell_execute(
+            None, "runas", "sc.exe", subprocess.list2cmdline(arguments), None, 0
+        )
+    except (AttributeError, OSError):
+        return False
+    if (result or 0) <= 32:
+        return False
+    return _wait_until(lambda: remote_desktop_service() != "disabled", wait)
+
+
+def launch_failure(result: str) -> tuple[str, Optional[int]]:
+    """解析 CloneDesktop.exe 写入的 launch-result.txt 失败行。"""
+    words = (result or "").split()
+    if len(words) >= 3 and words[1] == "noconnect" and words[2].isdigit():
+        return "noconnect", int(words[2])
+    return "other", None
+
+
+class _UserInfo24(ctypes.Structure):
+    _fields_ = [
+        ("internet_identity", ctypes.c_int),
+        ("flags", ctypes.c_ulong),
+        ("provider", ctypes.c_wchar_p),
+        ("principal", ctypes.c_wchar_p),
+        ("sid", ctypes.c_void_p),
+    ]
+
+
+def _windows_identity() -> Optional[tuple[bool, str, str]]:
+    """通过 NetUserGetInfo(level=24) 判断当前用户是微软账户还是本地账户。"""
+    if sys.platform != "win32":
+        return None
+    try:
+        netapi = ctypes.windll.netapi32
+        size = ctypes.c_ulong(257)
+        name = ctypes.create_unicode_buffer(size.value)
+        if not ctypes.windll.advapi32.GetUserNameW(name, ctypes.byref(size)):
+            return None
+        buffer = ctypes.c_void_p()
+        if netapi.NetUserGetInfo(None, name.value, 24, ctypes.byref(buffer)) != 0:
+            return None
+    except (AttributeError, OSError):
+        return None
+    try:
+        info = ctypes.cast(buffer, ctypes.POINTER(_UserInfo24)).contents
+        return bool(info.internet_identity), str(info.principal or ""), name.value
+    finally:
+        netapi.NetApiBufferFree(buffer)
+
+
+@functools.lru_cache(maxsize=1)
+def _current_user_sid() -> Optional[str]:
+    if sys.platform != "win32":
+        return None
+    try:
+        result = subprocess.run(
+            ["whoami", "/user", "/fo", "csv", "/nh"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for part in result.stdout.replace('"', "").replace("\n", ",").split(","):
+        if part.strip().startswith("S-1-"):
+            return part.strip()
+    return None
+
+
+def microsoft_account() -> Optional[bool]:
+    """当前 Windows 登录账号是否为 Microsoft 微软账户（None=无法判断）。"""
+    if sys.platform != "win32":
+        return None
+    identity = _windows_identity()
+    if identity is not None:
+        return identity[0]
+    try:
+        import winreg
+    except ImportError:
+        return None
+    sid = _current_user_sid()
+    if sid:
+        provider = _read_hklm(
+            rf"SOFTWARE\Microsoft\IdentityStore\Cache\{sid}\IdentityCache\{sid}",
+            "ProviderName",
+        )
+        if isinstance(provider, str) and provider:
+            return "microsoftaccount" in provider.replace(" ", "").lower()
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\IdentityCRL\UserExtendedProperties",
+        ) as key:
+            return winreg.QueryInfoKey(key)[0] > 0
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return None
+
+
+def sign_in_account() -> Optional[str]:
+    """返回分身登录框应预填的准确账号名（MicrosoftAccount\\邮箱 或 计算机名\\用户名）。"""
+    identity = _windows_identity()
+    if identity is None:
+        return None
+    linked, principal, user = identity
+    if linked:
+        return f"MicrosoftAccount\\{principal}" if "@" in principal else None
+    machine = os.environ.get("COMPUTERNAME", "")
+    return f"{machine}\\{user}" if machine and user else None
+
+
+def hello_only() -> bool:
+    """微软账户是否开启了「仅允许 Windows Hello 登录」（会阻挡分身密码登录）。"""
+    if sys.platform != "win32":
+        return False
+    value = _read_hklm(HELLO_KEY, "DevicePasswordLessBuildVersion")
+    return value == 2 and microsoft_account() is not False
+
+
+def turn_off_hello_only(wait: float = 20.0) -> bool:
+    """一键关闭「仅允许 Windows Hello 登录」（不关闭人脸与 PIN 本身）。"""
+    if sys.platform != "win32":
+        return False
+    if is_admin():
+        try:
+            import winreg
+
+            with winreg.CreateKeyEx(
+                winreg.HKEY_LOCAL_MACHINE, HELLO_KEY, 0, winreg.KEY_SET_VALUE
+            ) as key:
+                winreg.SetValueEx(
+                    key, "DevicePasswordLessBuildVersion", 0, winreg.REG_DWORD, 0
+                )
+        except (ImportError, OSError):
+            return False
+        return not hello_only()
+    arguments = subprocess.list2cmdline(
+        [
+            "add",
+            "HKLM\\" + HELLO_KEY,
+            "/v",
+            "DevicePasswordLessBuildVersion",
+            "/t",
+            "REG_DWORD",
+            "/d",
+            "0",
+            "/f",
+        ]
+    )
+    try:
+        shell_execute = ctypes.windll.shell32.ShellExecuteW
+        shell_execute.restype = ctypes.c_void_p
+        result = shell_execute(None, "runas", "reg.exe", arguments, None, 0)
+    except (AttributeError, OSError):
+        return False
+    if (result or 0) <= 32:
+        return False
+    return _wait_until(lambda: not hello_only(), wait)
+
+
+def saved_sign_in() -> bool:
+    """Windows 凭据管理器中是否已记住分身登录密码。"""
+    if sys.platform != "win32":
+        return False
+    try:
+        advapi = ctypes.windll.advapi32
+        pointer = ctypes.c_void_p()
+        if not advapi.CredReadW(SAVED_SIGN_IN_TARGET, 1, 0, ctypes.byref(pointer)):
+            return False
+        advapi.CredFree(pointer)
+        return True
+    except (AttributeError, OSError):
+        return False
+
+
+def password_text(microsoft: Optional[bool]) -> str:
+    if microsoft:
+        return "微软账号的密码（登录微软官网用的那组），不是 PIN"
+    if microsoft is False:
+        return "这台电脑的本地开机密码，不是 PIN"
+    return "Windows 账户密码，不是 PIN"
+
+
+def evaluate_pc_checks(
+    *,
+    is_supported: bool,
+    is_removed: bool,
+    is_ready: bool,
+    service: str,
+    microsoft: Optional[bool],
+    account: Optional[str],
+    is_hello_only: bool,
+) -> list[CloneCheck]:
+    """纯函数：根据检测值生成与 YES-BD2 完全一致的 6 行电脑状态诊断卡。"""
+    if not is_supported:
+        return [CloneCheck("Windows", BAD, "家庭版不支持子会话桌面分身，请改用主桌面后台模式")]
+
+    rows = [CloneCheck("Windows", OK, "专业版/企业版，支持桌面分身")]
+    if is_removed:
+        rows.append(CloneCheck("分身程序", BAD, "CloneDesktop.exe 不见了（可能被杀毒软件误删）", "第一次设定"))
+    elif not is_ready:
+        rows.append(CloneCheck("第一次设定", WARN, "尚未完成设定", "第一次设定"))
+    else:
+        rows.append(CloneCheck("第一次设定", OK, "已设定"))
+
+    if service == "missing":
+        rows.append(CloneCheck("远程桌面服务", BAD, "本机缺少该服务（精简版 Windows），无法使用"))
+    elif service == "disabled":
+        rows.append(CloneCheck("远程桌面服务", WARN, "已被禁用", "帮我打开"))
+    elif service == "replaced":
+        rows.append(CloneCheck("远程桌面服务", WARN, "ServiceDll 被替换（如 RDP Wrapper），可能导致无法连接"))
+    else:
+        rows.append(CloneCheck("远程桌面服务", OK, "正常"))
+
+    shown = (account or "").removeprefix("MicrosoftAccount\\")
+    if microsoft:
+        rows.append(CloneCheck("登录账户", OK, f"微软账户 {shown}".strip()))
+    elif microsoft is False:
+        rows.append(CloneCheck("登录账户", OK, f"本地账户 {shown}".strip()))
+    else:
+        rows.append(CloneCheck("登录账户", WARN, "未能识别账户类型"))
+
+    rows.append(CloneCheck("要打的密码", OK, password_text(microsoft)))
+
+    if is_hello_only:
+        rows.append(CloneCheck("Windows Hello", WARN, "仅允许 Windows Hello 登录（会挡住分身）", "帮我关掉"))
+    else:
+        rows.append(CloneCheck("Windows Hello", OK, "允许使用密码登录"))
+
+    return rows
+
+
+def check_this_pc() -> list[CloneCheck]:
+    """实时检查当前电脑的桌面分身就绪状态。"""
+    is_sup = supported()
+    if not is_sup:
+        return evaluate_pc_checks(
+            is_supported=False,
+            is_removed=False,
+            is_ready=False,
+            service="ok",
+            microsoft=None,
+            account=None,
+            is_hello_only=False,
+        )
+    return evaluate_pc_checks(
+        is_supported=True,
+        is_removed=viewer_removed(),
+        is_ready=ready(),
+        service=remote_desktop_service(),
+        microsoft=microsoft_account(),
+        account=sign_in_account(),
+        is_hello_only=hello_only(),
+    )
+
+
+def _session_of(pid: int) -> Optional[int]:
+    if sys.platform != "win32":
+        return None
+    try:
+        session = ctypes.c_ulong(0)
+        if not ctypes.windll.kernel32.ProcessIdToSessionId(pid, ctypes.byref(session)):
+            return None
+        return int(session.value)
+    except (AttributeError, OSError):
+        return None
+
+
+def _console_session() -> Optional[int]:
+    if sys.platform != "win32":
+        return None
+    try:
+        return int(ctypes.windll.kernel32.WTSGetActiveConsoleSessionId())
+    except (AttributeError, OSError):
+        return None
+
+
+def _viewer_processes() -> list[Any]:
+    try:
+        import psutil
+
+        return [
+            p
+            for p in psutil.process_iter(["pid", "name"])
+            if (p.info.get("name") or "").lower() == "clonedesktop.exe"
+        ]
+    except Exception:
+        return []
+
+
+def viewer_running() -> bool:
+    return bool(_viewer_processes())
+
+
+def _viewer_in_other_session(own: int) -> bool:
+    for proc in _viewer_processes():
+        session = _session_of(proc.info["pid"])
+        if session is None or session != own:
+            return True
+    return False
+
+
+@functools.lru_cache(maxsize=1)
+def in_clone() -> bool:
+    """判断当前 YES-NK 进程是否正运行在桌面分身子会话内部。"""
+    own = _session_of(os.getpid())
+    console = _console_session()
+    if own is None or console is None or own == console:
+        return False
+    return _viewer_in_other_session(own)
+
+
+def child_session_id() -> Optional[int]:
+    if sys.platform != "win32":
+        return None
+    try:
+        session = ctypes.c_ulong(0)
+        if not ctypes.windll.wtsapi32.WTSGetChildSessionId(ctypes.byref(session)):
+            return None
+        val = int(session.value)
+        return val if val not in (0, 0xFFFFFFFF) else None
+    except (AttributeError, OSError):
+        return None
+
+
+def _tool_names() -> set[str]:
+    return {os.path.basename(sys.executable).lower(), "python.exe", "pythonw.exe", "yes-nk.exe"}
+
+
+def _in_clone_session(names: set[str]) -> bool:
+    child = child_session_id()
+    if child is None or in_clone():
+        return False
+    try:
+        import psutil
+    except ImportError:
+        return False
+    for proc in psutil.process_iter(["pid", "name"]):
+        if (proc.info.get("name") or "").lower() not in names:
+            continue
+        if _session_of(proc.info["pid"]) == child:
+            return True
+    return False
+
+
+def tool_running_in_clone() -> bool:
+    return _in_clone_session(_tool_names())
+
+
+def clone_open() -> bool:
+    return _in_clone_session(_tool_names() | GAME_NAMES)
+
+
+def run_setup(undo: bool = False, allow_rdp: bool = False) -> bool:
+    """在独立 PowerShell 窗口中运行 setup.ps1（第一次设定或一键还原桌面分身）。"""
+    if sys.platform != "win32" or not SETUP_SCRIPT.exists():
+        return False
+    command = [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(SETUP_SCRIPT),
+    ]
+    if undo:
+        command.append("-Undo")
+    if allow_rdp:
+        command.append("-AllowRdp")
+    subprocess.Popen(
+        command,
+        cwd=str(APP_ROOT),
+        creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+    )
+    return True
+
+
+def update_viewer() -> None:
+    """当 CloneDesktop.cs 更新时自动用系统自带 csc.exe 重编 CloneDesktop.exe（无需管理员）。"""
+    if sys.platform != "win32":
+        return
+    try:
+        if (
+            not VIEWER.exists()
+            or not VIEWER_SOURCE.exists()
+            or VIEWER.stat().st_mtime >= VIEWER_SOURCE.stat().st_mtime
+        ):
+            return
+    except OSError:
+        return
+    if viewer_running():
+        return
+
+    windir = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    csc = windir / "Microsoft.NET" / "Framework64" / "v4.0.30319" / "csc.exe"
+    if not csc.exists():
+        csc = windir / "Microsoft.NET" / "Framework" / "v4.0.30319" / "csc.exe"
+    if not csc.exists():
+        return
+
+    built = VIEWER.with_suffix(".new.exe")
+    command = [
+        str(csc),
+        "/nologo",
+        "/codepage:65001",
+        "/target:winexe",
+        f"/out:{built}",
+        "/r:System.Windows.Forms.dll",
+        "/r:System.Drawing.dll",
+        "/r:Microsoft.CSharp.dll",
+        "/r:System.Core.dll",
+        "/r:System.Management.dll",
+        str(VIEWER_SOURCE),
+    ]
+    try:
+        subprocess.run(
+            command,
+            capture_output=True,
+            timeout=120,
+            check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        os.replace(built, VIEWER)
+    except (OSError, subprocess.SubprocessError):
+        try:
+            built.unlink()
+        except OSError:
+            pass
+
+
+def _exe_of_command(command: str) -> Optional[str]:
+    command = os.path.expandvars(command.strip())
+    if command.startswith('"'):
+        return command[1:].split('"', 1)[0]
+    lowered = command.lower()
+    end = lowered.find(".exe")
+    return command[: end + 4] if end >= 0 else command.split(" ", 1)[0]
+
+
+def startup_programs() -> set[str]:
+    paths: set[str] = set()
+    if sys.platform != "win32":
+        return paths
+    try:
+        import winreg
+    except ImportError:
+        return paths
+    for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for key_path in _RUN_KEYS:
+            try:
+                with winreg.OpenKey(root, key_path) as key:
+                    index = 0
+                    while True:
+                        try:
+                            _name, value, _kind = winreg.EnumValue(key, index)
+                        except OSError:
+                            break
+                        index += 1
+                        exe = _exe_of_command(str(value))
+                        if exe:
+                            paths.add(os.path.normcase(exe))
+            except OSError:
+                continue
+    return paths
+
+
+def sign_in_task_programs() -> set[str]:
+    paths: set[str] = set()
+    if sys.platform != "win32":
+        return paths
+    try:
+        import win32com.client
+
+        service = win32com.client.Dispatch("Schedule.Service")
+        service.Connect()
+    except Exception:
+        return paths
+    folders = [service.GetFolder("\\")]
+    while folders:
+        folder = folders.pop()
+        try:
+            folders.extend(folder.GetFolders(0))
+            tasks = list(folder.GetTasks(0))
+        except Exception:
+            continue
+        for task in tasks:
+            try:
+                if not task.Enabled:
+                    continue
+                definition = task.Definition
+                if not any(trigger.Type in (9, 11) for trigger in definition.Triggers):
+                    continue
+                for action in definition.Actions:
+                    if action.Type == 0 and action.Path:
+                        path = os.path.expandvars(str(action.Path).strip('"'))
+                        paths.add(os.path.normcase(path))
+            except Exception:
+                continue
+    return paths
+
+
+def _closable(path: str) -> bool:
+    windows_dir = os.path.normcase(os.environ.get("SystemRoot", r"C:\Windows"))
+    return not path.startswith(windows_dir) and os.path.basename(path).lower() not in KEEP_NAMES
+
+
+def write_startup_list() -> None:
+    """将用户开机自启清单写入分身数据目录，供 CloneDesktop.exe 在分身登录后自动清理杂项程序。"""
+    try:
+        paths = sorted(p for p in startup_programs() if _closable(p))
+        tasks = sorted(p for p in sign_in_task_programs() if _closable(p))
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        STARTUP_LIST.write_text("\n".join(paths), encoding="utf-8")
+        STARTUP_TASK_LIST.write_text("\n".join(tasks), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def build_clone_tool_command(debug: bool = False) -> tuple[str, str]:
+    """返回供 CloneDesktop.exe -launch/-args 在分身内启动 YES-NK ok-script 引擎的命令。"""
+    if getattr(sys, "frozen", False):
+        args = ["--ok-core", "--in-clone"]
+        if debug:
+            args.append("--debug")
+        return sys.executable, subprocess.list2cmdline(args)
+    args = [str(APP_ROOT / "main.py"), "--in-clone"]
+    if debug:
+        args.append("--debug")
+    return sys.executable, subprocess.list2cmdline(args)
+
+
+def open_viewer(
+    launch_tool: bool = True,
+    debug: bool = False,
+    move_uri: Optional[str] = None,
+) -> bool:
+    """打开与 YES-BD2 一致的桌面分身窗口 (CloneDesktop.exe)，并在登录后自动在分身内拉起 YES-NK。"""
+    open_failure["why"] = ""
+    if sys.platform != "win32":
+        open_failure["why"] = "unsupported"
+        return False
+
+    for stale in (LAUNCH_RESULT, END_REQUEST):
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+
+    update_viewer()
+    write_startup_list()
+
+    args: list[str] = []
+    account = None if saved_sign_in() else sign_in_account()
+    if account:
+        args += ["-user", account]
+    if launch_tool:
+        exe, arguments = build_clone_tool_command(debug=debug)
+        args += ["-launch", exe, "-args", arguments, "-cwd", str(APP_ROOT)]
+    if move_uri:
+        args += ["-move", move_uri]
+
+    if is_admin():
+        try:
+            subprocess.Popen([str(VIEWER), *args], cwd=str(DATA_DIR))
+            return True
+        except OSError:
+            open_failure["why"] = "blocked"
+            return False
+
+    try:
+        shell_execute = ctypes.windll.shell32.ShellExecuteW
+        shell_execute.restype = ctypes.c_void_p
+        result = shell_execute(
+            None, "runas", str(VIEWER), subprocess.list2cmdline(args), str(DATA_DIR), 1
+        )
+    except (AttributeError, OSError):
+        open_failure["why"] = "blocked"
+        return False
+    if (result or 0) > 32:
+        return True
+    open_failure["why"] = "declined" if result == 5 else "blocked"
+    return False
+
+
+def launch_result() -> Optional[str]:
+    try:
+        return LAUNCH_RESULT.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
+
+def end_clone(timeout: float = LOGOFF_WAIT_SECONDS) -> bool:
+    """从主桌面安全关闭分身窗口并注销子会话（与点分身窗口 X 一致）。"""
+    child = child_session_id()
+    if child is None or in_clone():
+        for proc in _viewer_processes():
+            try:
+                proc.terminate()
+                proc.wait(5)
+            except Exception:
+                pass
+        return True
+
+    for proc in _viewer_processes():
+        try:
+            proc.terminate()
+            proc.wait(5)
         except Exception:
             pass
-    return f"Win32 Error {err_code}"
 
-
-def _load_win32_apis() -> tuple[Any, Any]:
-    """加载显式声明 64 位安全签名的 user32 / kernel32 实例（禁止截断 HANDLE）。"""
-    import ctypes
-    from ctypes import wintypes
-
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-
-    # user32 desktop APIs
-    user32.GetThreadDesktop.argtypes = [wintypes.DWORD]
-    user32.GetThreadDesktop.restype = wintypes.HANDLE
-
-    user32.SetThreadDesktop.argtypes = [wintypes.HANDLE]
-    user32.SetThreadDesktop.restype = wintypes.BOOL
-
-    user32.OpenDesktopW.argtypes = [
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.BOOL,
-        wintypes.DWORD,
-    ]
-    user32.OpenDesktopW.restype = wintypes.HANDLE
-
-    user32.CreateDesktopW.argtypes = [
-        wintypes.LPCWSTR,
-        wintypes.LPCWSTR,
-        ctypes.c_void_p,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        ctypes.c_void_p,
-    ]
-    user32.CreateDesktopW.restype = wintypes.HANDLE
-
-    user32.SwitchDesktop.argtypes = [wintypes.HANDLE]
-    user32.SwitchDesktop.restype = wintypes.BOOL
-
-    user32.CloseDesktop.argtypes = [wintypes.HANDLE]
-    user32.CloseDesktop.restype = wintypes.BOOL
-
-    # kernel32 process / thread APIs
-    kernel32.GetCurrentThreadId.argtypes = []
-    kernel32.GetCurrentThreadId.restype = wintypes.DWORD
-
-    kernel32.CreateProcessW.argtypes = [
-        wintypes.LPCWSTR,
-        wintypes.LPWSTR,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        wintypes.BOOL,
-        wintypes.DWORD,
-        ctypes.c_void_p,
-        wintypes.LPCWSTR,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-    ]
-    kernel32.CreateProcessW.restype = wintypes.BOOL
-
-    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-    kernel32.WaitForSingleObject.restype = wintypes.DWORD
-
-    kernel32.GetExitCodeProcess.argtypes = [
-        wintypes.HANDLE,
-        ctypes.POINTER(wintypes.DWORD),
-    ]
-    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
-
-    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-    kernel32.OpenProcess.restype = wintypes.HANDLE
-
-    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
-    kernel32.CloseHandle.restype = wintypes.BOOL
-
-    return user32, kernel32
-
-
-def is_pid_alive(pid: int) -> bool:
-    """跨平台判断指定 PID 当前是否存活。"""
-    if pid <= 0:
-        return False
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            from ctypes import wintypes
-
-            _user32, kernel32 = _load_win32_apis()
-            h_proc = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-            if not h_proc:
-                return False
-            try:
-                exit_code = wintypes.DWORD(0)
-                if not kernel32.GetExitCodeProcess(h_proc, ctypes.byref(exit_code)):
-                    return False
-                return int(exit_code.value) == STILL_ACTIVE
-            finally:
-                kernel32.CloseHandle(h_proc)
-        except Exception:
-            return False
     try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
+        subprocess.run(
+            ["logoff", str(child)],
+            capture_output=True,
+            timeout=timeout,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
         return False
 
+    return _wait_until(lambda: not clone_open(), timeout)
 
-def read_log_tail(log_path: Path, max_chars: int = 1200) -> str:
+
+def end_from_inside(how: str = END_JUST_CLOSE, wait: float = END_REQUEST_WAIT_SECONDS) -> bool:
+    """从分身内部请求主桌面的 CloneDesktop.exe 结束分身（支持 'end' 直接关掉 / 'move' 搬回桌面）。"""
+    if not in_clone():
+        return False
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        END_REQUEST.write_text(how, encoding="utf-8")
+        asked = True
+    except OSError:
+        asked = False
+
+    if asked and _wait_until(lambda: not END_REQUEST.exists(), wait):
+        time.sleep(min(10.0, LOGOFF_WAIT_SECONDS))
+        return True
+
+    for proc in _viewer_processes():
+        try:
+            proc.terminate()
+            proc.wait(5)
+        except Exception:
+            pass
+    if _viewer_processes():
+        try:
+            END_REQUEST.unlink()
+        except OSError:
+            pass
+        return False
+    try:
+        subprocess.run(
+            ["logoff"],
+            capture_output=True,
+            timeout=LOGOFF_WAIT_SECONDS,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return True
+
+
+def write_atomic(path: Path, payload: bytes) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_bytes(payload)
+    os.replace(temp, path)
+
+
+def request_job(task: str, run_mode: Optional[str] = None) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    job = {"task": task, "run_mode": run_mode, "at": time.time()}
+    write_atomic(JOB_FILE, json.dumps(job, ensure_ascii=False).encode("utf-8"))
+
+
+def take_job(max_age: float = 120.0) -> Optional[dict[str, Any]]:
+    try:
+        job = json.loads(JOB_FILE.read_text(encoding="utf-8"))
+        JOB_FILE.unlink()
+    except (OSError, ValueError):
+        return None
+    if not isinstance(job, dict) or time.time() - float(job.get("at", 0)) > max_age:
+        return None
+    return job
+
+
+def send_control(command: str) -> None:
+    write_atomic(CONTROL_FILE, command.encode("utf-8"))
+
+
+def take_control() -> Optional[str]:
+    try:
+        cmd = CONTROL_FILE.read_text(encoding="utf-8").strip()
+        CONTROL_FILE.unlink()
+        return cmd or None
+    except OSError:
+        return None
+
+
+def open_clone_folder() -> bool:
+    """打开 %LOCALAPPDATA%\\yes-nk\\clone-desktop 文件夹（查看 viewer.log / 加杀毒白名单）。"""
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if sys.platform == "win32":
+            os.startfile(str(DATA_DIR))  # type: ignore[attr-defined]
+            return True
+    except OSError:
+        pass
+    return False
+
+
+def read_log_tail(log_path: Path = VIEWER_LOG, max_chars: int = 2000) -> str:
     if not log_path.exists():
         return ""
     try:
-        content = log_path.read_text(encoding="utf-8", errors="replace").strip()
-        if len(content) <= max_chars:
-            return content
-        return "...\n" + content[-max_chars:]
-    except Exception:
+        text = log_path.read_text(encoding="utf-8", errors="replace").strip()
+        return text if len(text) <= max_chars else "...\n" + text[-max_chars:]
+    except OSError:
         return ""
 
 
 class WindowsDesktopCloneManager:
-    """封装 64 位安全的 Win32 CreateDesktopW / SwitchDesktop / CreateProcessW 桌面分身控制器。"""
+    """面向旧调用方的轻量兼容包装，内部已全面切换为 YES-BD2 同款 Child Session 桌面分身。"""
 
     def __init__(self, config: Optional[DesktopCloneConfig] = None) -> None:
         self.config = config or DesktopCloneConfig()
-        self._desktop_handle: Optional[int] = None
-        self._original_desktop_handle: Optional[int] = None
-        self.last_error_code: int = 0
-        self.last_error_message: str = ""
 
     @property
     def desktop_name(self) -> str:
@@ -311,324 +1021,12 @@ class WindowsDesktopCloneManager:
     def is_supported_os(self) -> bool:
         return sys.platform == "win32"
 
-    def build_process_desktop_attr(self) -> str:
-        """返回 Win32 STARTUPINFO.lpDesktop 所需的 WindowStation\\Desktop 标识。"""
-        return f"WinSta0\\{self.desktop_name}"
+    def is_ready(self) -> bool:
+        return ready()
 
-    def _record_win32_error(self, context: str, err_code: Optional[int] = None) -> None:
-        import ctypes
+    def open_clone(self, launch_tool: bool = True, debug: bool = False) -> bool:
+        move_uri = self.config.game_exe_path or None
+        return open_viewer(launch_tool=launch_tool, debug=debug, move_uri=move_uri)
 
-        code = ctypes.get_last_error() if err_code is None else int(err_code)
-        self.last_error_code = code
-        detail = _format_win32_error(code)
-        self.last_error_message = f"{context} ({detail})" if detail else context
-
-    def ensure_desktop(self) -> bool:
-        """打开或创建隔离桌面会话。非 Windows 环境返回 False。"""
-        if not self.is_supported_os:
-            self.last_error_message = "桌面分身模式仅支持 Windows 系统"
-            return False
-
-        user32, kernel32 = _load_win32_apis()
-        current_thread_id = kernel32.GetCurrentThreadId()
-        orig = user32.GetThreadDesktop(current_thread_id)
-        if orig:
-            self._original_desktop_handle = int(orig)
-
-        if self._desktop_handle:
-            return True
-
-        # 优先打开已存在的同名分身桌面
-        handle = user32.OpenDesktopW(self.desktop_name, 0, False, DESKTOP_ALL_ACCESS)
-        if not handle:
-            handle = user32.OpenDesktopW(
-                self.desktop_name,
-                0,
-                False,
-                DESKTOP_SWITCHDESKTOP | DESKTOP_CREATEWINDOW | DESKTOP_WRITEOBJECTS | DESKTOP_READOBJECTS,
-            )
-        # 若不存在则使用 GENERIC_ALL 新建分身桌面
-        if not handle:
-            handle = user32.CreateDesktopW(
-                self.desktop_name, None, None, 0, GENERIC_ALL, None
-            )
-        if not handle:
-            handle = user32.CreateDesktopW(
-                self.desktop_name, None, None, 0, DESKTOP_ALL_ACCESS, None
-            )
-        if not handle:
-            self._record_win32_error(f"创建或打开分身桌面 [{self.desktop_name}] 失败")
-            return False
-
-        self._desktop_handle = int(handle)
-        self.last_error_code = 0
-        self.last_error_message = ""
-        return True
-
-    def switch_to_clone(self) -> bool:
-        """切换当前显示画面进入桌面分身。"""
-        if not self.is_supported_os:
-            return False
-        if not self._desktop_handle and not self.ensure_desktop():
-            return False
-
-        user32, _kernel32 = _load_win32_apis()
-        ok = bool(user32.SwitchDesktop(self._desktop_handle))
-        if not ok:
-            self._record_win32_error(f"切换进入分身桌面 [{self.desktop_name}] 失败")
-        return ok
-
-    def switch_to_default(self) -> bool:
-        """切回 Windows 主桌面 (Default)，仅申请 DESKTOP_SWITCHDESKTOP 最小权限以提高兼容性。"""
-        if not self.is_supported_os:
-            return False
-
-        user32, _kernel32 = _load_win32_apis()
-        default_desk = user32.OpenDesktopW("Default", 0, False, DESKTOP_SWITCHDESKTOP)
-        if not default_desk:
-            default_desk = user32.OpenDesktopW("Default", 0, False, DESKTOP_ALL_ACCESS)
-        if default_desk:
-            try:
-                ok = bool(user32.SwitchDesktop(default_desk))
-                if not ok:
-                    self._record_win32_error("切回主桌面 Default 失败")
-                return ok
-            finally:
-                user32.CloseDesktop(default_desk)
-
-        if self._original_desktop_handle:
-            ok = bool(user32.SwitchDesktop(self._original_desktop_handle))
-            if not ok:
-                self._record_win32_error("使用原桌面句柄切回主桌面失败")
-            return ok
-
-        self._record_win32_error("无法打开主桌面 Default")
-        return False
-
-    def launch_in_clone(
-        self,
-        command_line: str,
-        cwd: Optional[Path] = None,
-        creation_flags: int = CREATE_NEW_PROCESS_GROUP,
-        verify_alive_ms: int = 0,
-    ) -> Optional[int]:
-        """在桌面分身会话内启动指定命令行进程，返回进程 PID（失败时记录精确 Win32 错误）。"""
-        if not self.is_supported_os or not command_line.strip():
-            self.last_error_message = "当前系统非 Windows 或启动命令为空"
-            return None
-        if not self._desktop_handle and not self.ensure_desktop():
-            return None
-
-        import ctypes
-        from ctypes import wintypes
-
-        _user32, kernel32 = _load_win32_apis()
-
-        class STARTUPINFOW(ctypes.Structure):
-            _fields_ = [
-                ("cb", wintypes.DWORD),
-                ("lpReserved", wintypes.LPWSTR),
-                ("lpDesktop", wintypes.LPWSTR),
-                ("lpTitle", wintypes.LPWSTR),
-                ("dwX", wintypes.DWORD),
-                ("dwY", wintypes.DWORD),
-                ("dwXSize", wintypes.DWORD),
-                ("dwYSize", wintypes.DWORD),
-                ("dwXCountChars", wintypes.DWORD),
-                ("dwYCountChars", wintypes.DWORD),
-                ("dwFillAttribute", wintypes.DWORD),
-                ("dwFlags", wintypes.DWORD),
-                ("wShowWindow", wintypes.WORD),
-                ("cbReserved2", wintypes.WORD),
-                ("lpReserved2", ctypes.POINTER(wintypes.BYTE)),
-                ("hStdInput", wintypes.HANDLE),
-                ("hStdOutput", wintypes.HANDLE),
-                ("hStdError", wintypes.HANDLE),
-            ]
-
-        class PROCESS_INFORMATION(ctypes.Structure):
-            _fields_ = [
-                ("hProcess", wintypes.HANDLE),
-                ("hThread", wintypes.HANDLE),
-                ("dwProcessId", wintypes.DWORD),
-                ("dwThreadId", wintypes.DWORD),
-            ]
-
-        si = STARTUPINFOW()
-        si.cb = ctypes.sizeof(STARTUPINFOW)
-        si.lpDesktop = self.build_process_desktop_attr()
-        pi = PROCESS_INFORMATION()
-
-        cmd_buf = ctypes.create_unicode_buffer(command_line)
-        cwd_str = str(cwd.resolve()) if cwd is not None else None
-
-        ok = kernel32.CreateProcessW(
-            None,
-            cmd_buf,
-            None,
-            None,
-            False,
-            creation_flags,
-            None,
-            cwd_str,
-            ctypes.byref(si),
-            ctypes.byref(pi),
-        )
-        if not ok:
-            self._record_win32_error(f"CreateProcessW 启动分身进程失败: {command_line}")
-            return None
-
-        pid = int(pi.dwProcessId)
-        try:
-            if verify_alive_ms > 0:
-                wait_rc = int(kernel32.WaitForSingleObject(pi.hProcess, verify_alive_ms))
-                if wait_rc == WAIT_OBJECT_0:
-                    exit_code = wintypes.DWORD(0)
-                    kernel32.GetExitCodeProcess(pi.hProcess, ctypes.byref(exit_code))
-                    self.last_error_code = int(exit_code.value)
-                    self.last_error_message = (
-                        f"分身进程启动后立即退出（退出码 {exit_code.value}），已取消切屏以防黑屏闪退。"
-                    )
-                    return None
-        finally:
-            kernel32.CloseHandle(pi.hThread)
-            kernel32.CloseHandle(pi.hProcess)
-
-        self.last_error_code = 0
-        self.last_error_message = ""
-        return pid
-
-    def check_existing_clone_host(self, ready_file: Path) -> Optional[int]:
-        """检查目标分身桌面是否已有正在运行的 Clone Host 进程，避免重复拉起。"""
-        if not ready_file.exists():
-            return None
-        try:
-            data = json.loads(ready_file.read_text(encoding="utf-8"))
-            if data.get("desktop") != self.desktop_name:
-                return None
-            pid = int(data.get("pid", 0))
-            if pid > 0 and is_pid_alive(pid):
-                return pid
-        except Exception:
-            return None
-        return None
-
-    def enter_clone_session(
-        self,
-        host_argv: list[str],
-        cwd: Path,
-        ready_file: Path,
-        log_file: Path,
-        wait_ready_sec: float = 4.0,
-    ) -> DesktopCloneResult:
-        """安全创建并进入桌面分身会话：
-        1. 若已有存活的分身控制台进程，直接切入该桌面；
-        2. 否则先启动分身控制台进程并等待其窗口就绪（或检测是否秒退）；
-        3. 确认就绪后再 SwitchDesktop，彻底根治“黑屏闪一下什么都没有”。
-        """
-        if not self.is_supported_os:
-            return DesktopCloneResult(
-                ok=False,
-                error_message="桌面分身模式仅支持 Windows 系统。",
-                log_path=str(log_file),
-            )
-
-        if not self.ensure_desktop():
-            return DesktopCloneResult(
-                ok=False,
-                error_code=self.last_error_code,
-                error_message=self.last_error_message,
-                log_path=str(log_file),
-            )
-
-        # 1. 若已有存活的 Clone Host，直接切换进入
-        existing_pid = self.check_existing_clone_host(ready_file)
-        if existing_pid:
-            switched = self.switch_to_clone()
-            return DesktopCloneResult(
-                ok=switched,
-                pid=existing_pid,
-                switched=switched,
-                reused_existing=True,
-                error_code=0 if switched else self.last_error_code,
-                error_message="" if switched else self.last_error_message,
-                log_path=str(log_file),
-            )
-
-        # 2. 清理旧的就绪标记，准备拉起新的 Clone Host
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            if ready_file.exists():
-                ready_file.unlink()
-        except Exception:
-            pass
-
-        launch_ts = time.time()
-        cmd = build_command_line(host_argv)
-        pid = self.launch_in_clone(cmd, cwd=cwd, verify_alive_ms=250)
-        if not pid:
-            tail = read_log_tail(log_file)
-            msg = self.last_error_message
-            if tail:
-                msg = f"{msg}\n\n最近日志 ({log_file.name}):\n{tail}"
-            return DesktopCloneResult(
-                ok=False,
-                error_code=self.last_error_code,
-                error_message=msg,
-                log_path=str(log_file),
-            )
-
-        # 3. 轮询等待 Clone Host 窗口就绪（最长 wait_ready_sec 秒）
-        deadline = time.time() + max(0.8, wait_ready_sec)
-        ready_confirmed = False
-        while time.time() < deadline:
-            if ready_file.exists():
-                try:
-                    info = json.loads(ready_file.read_text(encoding="utf-8"))
-                    if int(info.get("pid", 0)) == pid and float(info.get("ts", 0)) >= launch_ts - 1.0:
-                        ready_confirmed = True
-                        break
-                except Exception:
-                    pass
-            if not is_pid_alive(pid):
-                tail = read_log_tail(log_file)
-                msg = (
-                    f"分身桌面控制台进程 (PID={pid}) 在初始化期间提前退出，已中止切屏以避免黑屏闪退。"
-                )
-                if tail:
-                    msg += f"\n\n错误日志 ({log_file}):\n{tail}"
-                return DesktopCloneResult(
-                    ok=False,
-                    pid=pid,
-                    error_message=msg,
-                    log_path=str(log_file),
-                )
-            time.sleep(0.1)
-
-        # 即使未写入 ready_file（如极慢机器），只要进程仍然存活超过等待窗口也允许切入
-        if not ready_confirmed and not is_pid_alive(pid):
-            tail = read_log_tail(log_file)
-            return DesktopCloneResult(
-                ok=False,
-                pid=pid,
-                error_message=f"分身进程未能保持运行。\n{tail}",
-                log_path=str(log_file),
-            )
-
-        switched = self.switch_to_clone()
-        return DesktopCloneResult(
-            ok=switched,
-            pid=pid,
-            switched=switched,
-            reused_existing=False,
-            error_code=0 if switched else self.last_error_code,
-            error_message="" if switched else self.last_error_message,
-            log_path=str(log_file),
-        )
-
-    def close(self) -> None:
-        """释放桌面句柄（可选退出时安全回收）。"""
-        if self.is_supported_os and self._desktop_handle:
-            user32, _kernel32 = _load_win32_apis()
-            user32.CloseDesktop(self._desktop_handle)
-            self._desktop_handle = None
+    def end_clone(self) -> bool:
+        return end_clone()

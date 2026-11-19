@@ -2,8 +2,8 @@
 
 负责：
 - 读写根目录 yes_nk_config.json（与 Web 工作台、DailyTask 和 yes_nk/config.py 100% 互通）；
-- 同步全部 21 条 MaaNikke 转换流水线的开关与分组元数据；
-- 组装桌面分身 / 常规 ok-script 启动命令；
+- 同步全部 22 条 MaaNikke 转换流水线的开关与分组元数据；
+- 对接与 YES-BD2 完全一致的 Windows Child Session 桌面分身自检、设定、打开、结束与一键还原；
 - 校验 1080P 窗口客户区并触发 16:9 校准；
 - 调度 MaaNikke 图像模板转换与 pipeline JSON 覆盖分析。
 """
@@ -23,11 +23,11 @@ from tools.convert_maa_assets import (
     convert_maa_directory_to_coco,
 )
 from yes_nk.config import PROJECT_ROOT, USER_OVERRIDE_CONFIG
-from yes_nk.gui.clone_host import get_clone_log_path, get_clone_ready_path
 from yes_nk.tasks.DailyTask import ALL_PIPELINE_SPECS
+from yes_nk.utils import desktop_clone as clone
 from yes_nk.utils.desktop_clone import (
+    CloneCheck,
     DesktopCloneConfig,
-    DesktopCloneResult,
     RunMode,
     WindowsDesktopCloneManager,
     resolve_ok_interaction_class,
@@ -39,7 +39,6 @@ from yes_nk.utils.window_1080p import (
     get_window_client_size,
     resize_client_to_16_9,
 )
-
 
 PIPELINE_CATEGORIES: tuple[str, ...] = (
     "启动与奖励",
@@ -66,7 +65,7 @@ BASIC_DAILY_KEYS: set[str] = {
 
 
 def get_grouped_pipelines() -> dict[str, list[tuple[str, bool]]]:
-    """按 5 大类别返回全部 21 条流水线供桌面客户端分组渲染。"""
+    """按 5 大类别返回全部 22 条流水线供桌面客户端分组渲染。"""
     grouped: dict[str, list[tuple[str, bool]]] = {cat: [] for cat in PIPELINE_CATEGORIES}
     for key, cat, default_enabled, _cls in ALL_PIPELINE_SPECS:
         grouped.setdefault(cat, []).append((key, default_enabled))
@@ -77,11 +76,11 @@ def get_grouped_pipelines() -> dict[str, list[tuple[str, bool]]]:
 class DesktopLauncherState:
     run_mode: RunMode = "desktop_clone"
     desktop_name: str = "YES_NK_Desktop"
-    switch_hotkey: str = "Ctrl+Alt+F12"
+    switch_hotkey: str = "Minimize / Tray"
     window_title: str = "NIKKE"
     resolution: str = "1920x1080"
     prefer_borderless_1080p: bool = True
-    auto_close_desktop_on_exit: bool = True
+    auto_close_desktop_on_exit: bool = False
     game_exe_path: str = ""
     ocr_confidence: float = 0.78
     template_threshold: float = 0.82
@@ -92,13 +91,19 @@ class DesktopLauncherState:
             self.daily_toggles = dict(DEFAULT_DAILY_TOGGLES)
 
 
+@dataclass(frozen=True)
+class CloneLaunchOutcome:
+    ok: bool
+    status: str  # "opened" | "unsupported" | "need_setup" | "service_disabled" | "service_missing" | "hello_only" | "declined" | "blocked"
+    message: str
+
+
 class DesktopClientController:
     """桌面客户端业务状态与文件持久化控制器。"""
 
     def __init__(self, config_path: Path = USER_OVERRIDE_CONFIG) -> None:
         self.config_path = config_path
         self.state = self.load_state()
-        self._clone_manager: WindowsDesktopCloneManager | None = None
 
     def load_state(self) -> DesktopLauncherState:
         state = DesktopLauncherState()
@@ -190,8 +195,101 @@ class DesktopClientController:
             base.append("--debug")
         return base
 
+    def check_clone_environment(self) -> list[CloneCheck]:
+        return clone.check_this_pc()
+
+    def run_clone_setup(self, undo: bool = False, allow_rdp: bool = False) -> bool:
+        return clone.run_setup(undo=undo, allow_rdp=allow_rdp)
+
+    def fix_remote_desktop_service(self) -> bool:
+        return clone.enable_remote_desktop_service()
+
+    def fix_windows_hello(self) -> bool:
+        return clone.turn_off_hello_only()
+
+    def open_clone_folder(self) -> bool:
+        return clone.open_clone_folder()
+
+    def end_clone_desktop(self) -> bool:
+        return clone.end_clone()
+
+    def launch_in_clone_desktop(
+        self, launch_tool: bool = True, debug: bool = False
+    ) -> CloneLaunchOutcome:
+        """与 YES-BD2「在桌面分身跑」完全一致的前置检查与启动流程。"""
+        self.state.run_mode = "desktop_clone"
+        self.save_state()
+
+        if sys.platform != "win32" or not clone.supported():
+            return CloneLaunchOutcome(
+                ok=False,
+                status="unsupported",
+                message="桌面分身需要 Windows 10/11 专业版、企业版或教育版（家庭版不支持，请改用「后台窗口消息模式」）。",
+            )
+
+        if not clone.ready():
+            if clone.viewer_removed():
+                msg = (
+                    "检测到 CloneDesktop.exe 不见了（常见于 360 / 火绒误删）。"
+                    "请先将分身文件夹加入杀毒信任，再点击「第一次设定」重新建立。"
+                )
+            else:
+                msg = "尚未完成桌面分身「第一次设定」（编译分身窗口并开启 Windows 子会话）。"
+            return CloneLaunchOutcome(ok=False, status="need_setup", message=msg)
+
+        svc = clone.remote_desktop_service()
+        if svc == "missing":
+            return CloneLaunchOutcome(
+                ok=False,
+                status="service_missing",
+                message="本机缺少「远程桌面服务 (TermService)」（精简版系统），无法使用桌面分身，请改用主桌面后台模式。",
+            )
+        if svc == "disabled":
+            return CloneLaunchOutcome(
+                ok=False,
+                status="service_disabled",
+                message="Windows 的「远程桌面服务」已被禁用，桌面分身依赖它来建立本地子会话。",
+            )
+
+        if clone.hello_only():
+            return CloneLaunchOutcome(
+                ok=False,
+                status="hello_only",
+                message="当前微软账户开启了「仅允许 Windows Hello 登录」，会拦截分身密码登录。",
+            )
+
+        opened = clone.open_viewer(
+            launch_tool=launch_tool,
+            debug=debug,
+            move_uri=self.state.game_exe_path or None,
+        )
+        if opened:
+            return CloneLaunchOutcome(
+                ok=True,
+                status="opened",
+                message=(
+                    "已打开 YES-NK 桌面分身窗口（1920×1080 独立窗口，最小化也会继续跑）。"
+                    "首次使用请输入 Windows 账户密码（非 PIN）并勾选「记住」。"
+                ),
+            )
+
+        why = clone.open_failure.get("why", "blocked")
+        if why == "declined":
+            return CloneLaunchOutcome(
+                ok=False,
+                status="declined",
+                message="未在 Windows 管理员确认框中点击「是」，已取消打开桌面分身。",
+            )
+        return CloneLaunchOutcome(
+            ok=False,
+            status="blocked",
+            message=(
+                f"无法启动 CloneDesktop.exe（可能被杀毒软件拦截）。"
+                f"请将 {clone.DATA_DIR} 加入信任区后点击「第一次设定」重试。"
+            ),
+        )
+
     def find_nikke_window_hwnd(self) -> int:
-        """在 Windows 下按标题查找国服 NIKKE 游戏窗口句柄。"""
         if sys.platform != "win32":
             return 0
         try:
@@ -209,7 +307,6 @@ class DesktopClientController:
         return 0
 
     def inspect_live_window(self, dpi_scale_percent: int = 100) -> WindowGeometryReport:
-        """检测当前运行中的 nikke.exe 客户区尺寸并返回 1080P 诊断结果。"""
         hwnd = self.find_nikke_window_hwnd()
         if hwnd <= 0:
             return evaluate_client_geometry(0, 0, dpi_scale_percent)
@@ -219,58 +316,25 @@ class DesktopClientController:
         return evaluate_client_geometry(size[0], size[1], dpi_scale_percent)
 
     def calibrate_live_window_16_9(self, width: int = 1600, height: int = 900) -> bool:
-        """一键将运行中的游戏窗口校准为严格 16:9 客户区（默认 1600x900 适配 1080P 主桌面）。"""
         hwnd = self.find_nikke_window_hwnd()
         if hwnd <= 0:
             return False
         return resize_client_to_16_9(hwnd, target_width=width, target_height=height)
 
-    def build_clone_host_argv(self, auto_start_ok: bool = True, debug: bool = False) -> list[str]:
-        """构造在分身桌面内常驻运行的 Clone Host 进程启动参数。"""
-        if getattr(sys, "frozen", False):
-            argv = [sys.executable, "--clone-host"]
-        else:
-            argv = [sys.executable, str(PROJECT_ROOT / "main.py"), "--clone-host"]
-        if not auto_start_ok:
-            argv.append("--no-auto-start-ok")
-        if debug:
-            argv.append("--debug")
-        return argv
-
     def create_desktop_clone_manager(self) -> WindowsDesktopCloneManager:
-        cfg = DesktopCloneConfig(
-            run_mode=self.state.run_mode,
-            desktop_name=self.state.desktop_name,
-            switch_hotkey=self.state.switch_hotkey,
-            auto_close_desktop_on_exit=self.state.auto_close_desktop_on_exit,
-            prefer_borderless_1080p=self.state.prefer_borderless_1080p,
-            game_exe_path=self.state.game_exe_path,
-        )
-        if self._clone_manager is None or self._clone_manager.desktop_name != cfg.sanitized_desktop_name():
-            if self._clone_manager is not None:
-                self._clone_manager.close()
-            self._clone_manager = WindowsDesktopCloneManager(cfg)
-        else:
-            self._clone_manager.config = cfg
-        return self._clone_manager
-
-    def enter_desktop_clone(self, auto_start_ok: bool = True, debug: bool = False) -> DesktopCloneResult:
-        """保存最新配置并安全创建/进入桌面分身（内置就绪校验，杜绝黑屏闪退）。"""
-        self.state.run_mode = "desktop_clone"
-        self.save_state()
-        mgr = self.create_desktop_clone_manager()
-        return mgr.enter_clone_session(
-            host_argv=self.build_clone_host_argv(auto_start_ok=auto_start_ok, debug=debug),
-            cwd=PROJECT_ROOT,
-            ready_file=get_clone_ready_path(),
-            log_file=get_clone_log_path(),
-            wait_ready_sec=5.0,
+        return WindowsDesktopCloneManager(
+            DesktopCloneConfig(
+                run_mode=self.state.run_mode,
+                desktop_name=self.state.desktop_name,
+                switch_hotkey=self.state.switch_hotkey,
+                auto_close_desktop_on_exit=self.state.auto_close_desktop_on_exit,
+                prefer_borderless_1080p=self.state.prefer_borderless_1080p,
+                game_exe_path=self.state.game_exe_path,
+            )
         )
 
     def import_maa_assets(self, maa_dir: Path) -> ConversionReport:
-        """图形界面调用：将用户选定的 MaaNikke 图像目录转换为 COCO 特征包。"""
         return convert_maa_directory_to_coco(maa_image_dir=maa_dir)
 
     def analyze_maa_pipelines(self, pipeline_dir: Path) -> PipelineMigrationReport:
-        """图形界面调用：分析本地 MaaNikke pipeline JSON 目录并核对覆盖率。"""
         return analyze_maa_pipeline_directory(pipeline_dir)

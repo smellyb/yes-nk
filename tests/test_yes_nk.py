@@ -155,56 +155,78 @@ class YesNkCoreTests(unittest.TestCase):
         self.assertEqual(too_small.status, "too_small")
 
     def test_desktop_clone_config_and_interactions(self) -> None:
-        import os
-        from yes_nk.gui.clone_host import build_in_clone_ok_argv
         from yes_nk.utils.desktop_clone import (
-            MOD_ALT,
-            MOD_CONTROL,
-            MOD_NOREPEAT,
-            MOD_SHIFT,
-            build_command_line,
-            parse_hotkey_spec,
+            BAD,
+            CLONE_TROUBLESHOOT_QA,
+            OK,
+            WARN,
+            build_clone_tool_command,
+            evaluate_pc_checks,
+            launch_failure,
         )
 
         dc = DesktopCloneConfig(desktop_name="YES NK 桌面#1")
         self.assertEqual(dc.sanitized_desktop_name(), "YES_NK____1")
 
-        mgr = WindowsDesktopCloneManager(dc)
-        self.assertEqual(mgr.build_process_desktop_attr(), "WinSta0\\YES_NK____1")
+        # 1. 验证 Windows 家庭版与专业版 6 项自检逻辑（与 YES-BD2 clone_guide_page.py 完全一致）
+        home_checks = evaluate_pc_checks(
+            is_supported=False,
+            is_removed=False,
+            is_ready=False,
+            service="ok",
+            microsoft=True,
+            account="MicrosoftAccount\\test@example.com",
+            is_hello_only=False,
+        )
+        self.assertEqual(len(home_checks), 1)
+        self.assertEqual(home_checks[0].tone, BAD)
 
-        # 热键解析验证（Ctrl+Alt+F12 / Ctrl+Shift+H）
-        mods_f12, vk_f12 = parse_hotkey_spec("Ctrl+Alt+F12")
-        self.assertEqual(mods_f12, MOD_NOREPEAT | MOD_CONTROL | MOD_ALT)
-        self.assertEqual(vk_f12, 0x7B)
+        pro_need_fixes = evaluate_pc_checks(
+            is_supported=True,
+            is_removed=True,
+            is_ready=False,
+            service="disabled",
+            microsoft=True,
+            account="MicrosoftAccount\\commander@outlook.com",
+            is_hello_only=True,
+        )
+        self.assertEqual(len(pro_need_fixes), 6)
+        actions = {c.label: c.action for c in pro_need_fixes}
+        self.assertEqual(actions["分身程序"], "第一次设定")
+        self.assertEqual(actions["远程桌面服务"], "帮我打开")
+        self.assertEqual(actions["Windows Hello"], "帮我关掉")
 
-        mods_h, vk_h = parse_hotkey_spec("Ctrl+Shift+H")
-        self.assertEqual(mods_h, MOD_NOREPEAT | MOD_CONTROL | MOD_SHIFT)
-        self.assertEqual(vk_h, ord("H"))
+        pro_ready = evaluate_pc_checks(
+            is_supported=True,
+            is_removed=False,
+            is_ready=True,
+            service="ok",
+            microsoft=False,
+            account="PC\\Player",
+            is_hello_only=False,
+        )
+        self.assertTrue(all(c.tone == OK for c in pro_ready))
+        self.assertTrue(all(c.action == "" for c in pro_ready))
 
-        # 带空格路径的命令行安全转义
-        cmd = build_command_line([r"C:\Program Files\Python311\python.exe", r"D:\YES NK\main.py", "--clone-host"])
-        self.assertIn('"C:\\Program Files\\Python311\\python.exe"', cmd)
-        self.assertIn("--clone-host", cmd)
+        # 2. 验证 launch-result.txt 失败原因解析（如 RDP 代码 516）
+        self.assertEqual(launch_failure("failed noconnect 516"), ("noconnect", 516))
+        self.assertEqual(launch_failure("failed 未输入登录密码"), ("other", None))
 
-        # 验证已存活 Clone Host 复用检测（避免重复创建）
-        with tempfile.TemporaryDirectory() as tmp:
-            ready_file = Path(tmp) / "clone_host_ready.json"
-            ready_file.write_text(
-                json.dumps({"pid": os.getpid(), "desktop": mgr.desktop_name, "ts": 12345.0}),
-                encoding="utf-8",
-            )
-            self.assertEqual(mgr.check_existing_clone_host(ready_file), os.getpid())
+        # 3. 验证子会话拉起命令与 tools/clone_desktop 源文件完整性
+        exe, args_str = build_clone_tool_command(debug=True)
+        self.assertTrue(bool(exe))
+        self.assertIn("--in-clone", args_str)
+        self.assertIn("--debug", args_str)
+        self.assertGreaterEqual(len(CLONE_TROUBLESHOOT_QA), 6)
 
-            # 不同桌面名称不误复用
-            ready_file.write_text(
-                json.dumps({"pid": os.getpid(), "desktop": "Other_Desktop", "ts": 12345.0}),
-                encoding="utf-8",
-            )
-            self.assertIsNone(mgr.check_existing_clone_host(ready_file))
-
-        ok_argv = build_in_clone_ok_argv(debug=True)
-        self.assertIn("--in-clone", ok_argv)
-        self.assertIn("--debug", ok_argv)
+        root = Path(__file__).resolve().parent.parent
+        cs_text = (root / "tools" / "clone_desktop" / "CloneDesktop.cs").read_text(encoding="utf-8")
+        ps_text = (root / "tools" / "clone_desktop" / "setup.ps1").read_text(encoding="utf-8")
+        self.assertIn("ConnectToChildSession", cs_text)
+        self.assertIn("8B918B82-7985-4C24-89DF-C33AD2BBFBCD", cs_text)
+        self.assertIn("WTSEnableChildSessions", ps_text)
+        self.assertIn("RemoteDesktop_SuppressWhenMinimized", ps_text)
+        self.assertTrue((root / "tools" / "clone_desktop" / "LICENSE-childstream.txt").exists())
 
         self.assertEqual(resolve_ok_interaction_class("desktop_clone"), "ForegroundPostMessage")
         self.assertEqual(resolve_ok_interaction_class("background_post_message"), "PostMessage")

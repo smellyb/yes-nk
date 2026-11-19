@@ -22,10 +22,10 @@ const RUN_MODE_CARDS: {
 }[] = [
   {
     mode: 'desktop_clone',
-    title: '桌面分身模式（仿 YES-BD2 首选）',
-    subtitle: 'Win32 CreateDesktopW 独立隔离桌面',
+    title: '桌面分身模式（与 YES-BD2 完全一致）',
+    subtitle: 'Windows 子会话 (Child Session) + CloneDesktop.exe 独立窗口',
     detail:
-      '在独立桌面会话内运行游戏与脚本，主桌面键鼠完全不被抢占；分身内推荐游戏设为 1920×1080 无边框全屏，兼顾 1080P 屏幕零偏移。',
+      '需 Win10/11 专业版。在主桌面打开 1920×1080 独立虚拟桌面窗口（最小化也会继续画），完全不抢占主桌面鼠标键盘；支持一键设定与一键还原。',
   },
   {
     mode: 'background_post_message',
@@ -89,7 +89,7 @@ export default function DesktopClonePanel({
           桌面分身运行模式与 1080P 显示器适配
         </h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          复刻 YES-BD2 的独立桌面分身工作方式，并针对 1920×1080 物理显示器提供无边框全屏与 16:9 窗口化双轨客户区校验。
+          与 YES-BD2 完全一致的 Windows 子会话（Child Session）桌面分身方案：通过 tools/clone_desktop/setup.ps1 一次性编译独立分身窗口 CloneDesktop.exe，内嵌 1920×1080 画面且最小化持续运行。
         </p>
       </div>
 
@@ -147,7 +147,7 @@ export default function DesktopClonePanel({
                 htmlFor="clone-desktop-name"
                 className="text-xs text-slate-500 dark:text-slate-400"
               >
-                Win32 隔离桌面名称 (lpDesktop)
+                分身会话标识（数据目录 %LOCALAPPDATA%\yes-nk\clone-desktop）
               </label>
               <input
                 id="clone-desktop-name"
@@ -159,7 +159,7 @@ export default function DesktopClonePanel({
                 className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
               />
               <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                实际句柄：WinSta0\{sanitizedName}
+                首次设定：powershell -ExecutionPolicy Bypass -File tools\clone_desktop\setup.ps1（会话 {sanitizedName}）
               </div>
             </div>
 
