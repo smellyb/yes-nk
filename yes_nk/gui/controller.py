@@ -23,9 +23,11 @@ from tools.convert_maa_assets import (
     convert_maa_directory_to_coco,
 )
 from yes_nk.config import PROJECT_ROOT, USER_OVERRIDE_CONFIG
+from yes_nk.gui.clone_host import get_clone_log_path, get_clone_ready_path
 from yes_nk.tasks.DailyTask import ALL_PIPELINE_SPECS
 from yes_nk.utils.desktop_clone import (
     DesktopCloneConfig,
+    DesktopCloneResult,
     RunMode,
     WindowsDesktopCloneManager,
     resolve_ok_interaction_class,
@@ -80,6 +82,7 @@ class DesktopLauncherState:
     resolution: str = "1920x1080"
     prefer_borderless_1080p: bool = True
     auto_close_desktop_on_exit: bool = True
+    game_exe_path: str = ""
     ocr_confidence: float = 0.78
     template_threshold: float = 0.82
     daily_toggles: dict[str, bool] | None = None
@@ -95,6 +98,7 @@ class DesktopClientController:
     def __init__(self, config_path: Path = USER_OVERRIDE_CONFIG) -> None:
         self.config_path = config_path
         self.state = self.load_state()
+        self._clone_manager: WindowsDesktopCloneManager | None = None
 
     def load_state(self) -> DesktopLauncherState:
         state = DesktopLauncherState()
@@ -116,6 +120,7 @@ class DesktopClientController:
         state.auto_close_desktop_on_exit = bool(
             dc.get("auto_close_desktop_on_exit", state.auto_close_desktop_on_exit)
         )
+        state.game_exe_path = str(dc.get("game_exe_path", state.game_exe_path))
         state.window_title = str(client.get("windowTitle", state.window_title))
         state.resolution = str(client.get("resolution", state.resolution))
         state.ocr_confidence = float(client.get("ocrConfidence", state.ocr_confidence))
@@ -138,6 +143,7 @@ class DesktopClientController:
             switch_hotkey=self.state.switch_hotkey,
             auto_close_desktop_on_exit=self.state.auto_close_desktop_on_exit,
             prefer_borderless_1080p=self.state.prefer_borderless_1080p,
+            game_exe_path=self.state.game_exe_path,
         )
         payload: dict[str, Any] = {
             "project": "YES-NK",
@@ -149,6 +155,7 @@ class DesktopClientController:
                 "switch_hotkey": dc_cfg.switch_hotkey,
                 "auto_close_desktop_on_exit": dc_cfg.auto_close_desktop_on_exit,
                 "prefer_borderless_1080p": dc_cfg.prefer_borderless_1080p,
+                "game_exe_path": dc_cfg.game_exe_path,
                 "resolved_interaction": resolve_ok_interaction_class(dc_cfg.run_mode),
             },
             "client": {
@@ -218,15 +225,46 @@ class DesktopClientController:
             return False
         return resize_client_to_16_9(hwnd, target_width=width, target_height=height)
 
+    def build_clone_host_argv(self, auto_start_ok: bool = True, debug: bool = False) -> list[str]:
+        """构造在分身桌面内常驻运行的 Clone Host 进程启动参数。"""
+        if getattr(sys, "frozen", False):
+            argv = [sys.executable, "--clone-host"]
+        else:
+            argv = [sys.executable, str(PROJECT_ROOT / "main.py"), "--clone-host"]
+        if not auto_start_ok:
+            argv.append("--no-auto-start-ok")
+        if debug:
+            argv.append("--debug")
+        return argv
+
     def create_desktop_clone_manager(self) -> WindowsDesktopCloneManager:
-        return WindowsDesktopCloneManager(
-            DesktopCloneConfig(
-                run_mode=self.state.run_mode,
-                desktop_name=self.state.desktop_name,
-                switch_hotkey=self.state.switch_hotkey,
-                auto_close_desktop_on_exit=self.state.auto_close_desktop_on_exit,
-                prefer_borderless_1080p=self.state.prefer_borderless_1080p,
-            )
+        cfg = DesktopCloneConfig(
+            run_mode=self.state.run_mode,
+            desktop_name=self.state.desktop_name,
+            switch_hotkey=self.state.switch_hotkey,
+            auto_close_desktop_on_exit=self.state.auto_close_desktop_on_exit,
+            prefer_borderless_1080p=self.state.prefer_borderless_1080p,
+            game_exe_path=self.state.game_exe_path,
+        )
+        if self._clone_manager is None or self._clone_manager.desktop_name != cfg.sanitized_desktop_name():
+            if self._clone_manager is not None:
+                self._clone_manager.close()
+            self._clone_manager = WindowsDesktopCloneManager(cfg)
+        else:
+            self._clone_manager.config = cfg
+        return self._clone_manager
+
+    def enter_desktop_clone(self, auto_start_ok: bool = True, debug: bool = False) -> DesktopCloneResult:
+        """保存最新配置并安全创建/进入桌面分身（内置就绪校验，杜绝黑屏闪退）。"""
+        self.state.run_mode = "desktop_clone"
+        self.save_state()
+        mgr = self.create_desktop_clone_manager()
+        return mgr.enter_clone_session(
+            host_argv=self.build_clone_host_argv(auto_start_ok=auto_start_ok, debug=debug),
+            cwd=PROJECT_ROOT,
+            ready_file=get_clone_ready_path(),
+            log_file=get_clone_log_path(),
+            wait_ready_sec=5.0,
         )
 
     def import_maa_assets(self, maa_dir: Path) -> ConversionReport:

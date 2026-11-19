@@ -30,6 +30,9 @@ hidden_imports = [
     "yes_nk.tasks.DailyMissionTask",
     "yes_nk.tasks.PassRewardTask",
     "yes_nk.tasks.PopupGuardTrigger",
+    "yes_nk.gui.clone_host",
+    "yes_nk.gui.desktop_client",
+    "yes_nk.gui.controller",
     "tools.convert_maa_assets",
 ]
 

@@ -15,13 +15,15 @@ import sys
 from typing import Any
 
 from yes_nk import __version__
-from yes_nk.config import PROJECT_ROOT
+from yes_nk.config import PROJECT_ROOT, RESOURCE_ROOT
+from yes_nk.gui.clone_host import get_clone_log_path
 from yes_nk.gui.controller import (
     BASIC_DAILY_KEYS,
     DEFAULT_DAILY_TOGGLES,
     DesktopClientController,
     get_grouped_pipelines,
 )
+from yes_nk.utils.desktop_clone import read_log_tail
 from yes_nk.utils.window_1080p import (
     enable_per_monitor_dpi_awareness,
     evaluate_client_geometry,
@@ -136,7 +138,7 @@ def launch_desktop_client() -> int:
             self.resize(1040, 680)
             self.setMinimumSize(900, 600)
 
-            icon_path = PROJECT_ROOT / "assets" / "icon.png"
+            icon_path = RESOURCE_ROOT / "assets" / "icon.png"
             if icon_path.exists():
                 self.setWindowIcon(QIcon(str(icon_path)))
 
@@ -302,7 +304,7 @@ def launch_desktop_client() -> int:
             action_row = QHBoxLayout()
             btn_clone_start = QPushButton("在桌面分身内一键启动 (仿 YES-BD2)")
             btn_clone_start.setObjectName("PrimaryButton")
-            btn_clone_start.clicked.connect(self._on_launch_in_clone)
+            btn_clone_start.clicked.connect(lambda: self._on_launch_in_clone(debug=False))
             action_row.addWidget(btn_clone_start)
 
             btn_debug = QPushButton("调试模式启动 (main_debug)")
@@ -354,17 +356,39 @@ def launch_desktop_client() -> int:
             self.window_title_input = QLineEdit(self.controller.state.window_title)
             clone_grid.addWidget(self.window_title_input, 2, 1)
 
+            clone_grid.addWidget(QLabel("游戏 / WeGame 路径"), 3, 0)
+            game_path_row = QHBoxLayout()
+            self.game_exe_input = QLineEdit(self.controller.state.game_exe_path)
+            self.game_exe_input.setPlaceholderText("可选：预先指定 nikke.exe 或 wegame.exe，进入分身后可一键启动")
+            game_path_row.addWidget(self.game_exe_input, stretch=1)
+            btn_browse_game = QPushButton("浏览...")
+            btn_browse_game.clicked.connect(self._on_browse_game_exe)
+            game_path_row.addWidget(btn_browse_game)
+            clone_grid.addLayout(game_path_row, 3, 1)
+
+            clone_tip = QLabel(
+                "说明：进入分身桌面后会自动打开常驻分身控制台（不再黑屏闪退），"
+                "按 Ctrl+Alt+F12 或点击顶部按钮可随时切回主桌面，游戏与脚本在分身内持续运行。"
+            )
+            clone_tip.setWordWrap(True)
+            clone_tip.setStyleSheet("color:#475569; font-size:12px;")
+            clone_grid.addWidget(clone_tip, 4, 0, 1, 2)
+
             btn_row = QHBoxLayout()
             btn_enter_clone = QPushButton("创建并进入桌面分身")
             btn_enter_clone.setObjectName("PrimaryButton")
-            btn_enter_clone.clicked.connect(self._on_launch_in_clone)
+            btn_enter_clone.clicked.connect(lambda: self._on_launch_in_clone(debug=False))
             btn_row.addWidget(btn_enter_clone)
 
             btn_back_default = QPushButton("切回 Windows 主桌面")
             btn_back_default.clicked.connect(self._on_switch_default)
             btn_row.addWidget(btn_back_default)
+
+            btn_clone_log = QPushButton("查看分身诊断日志")
+            btn_clone_log.clicked.connect(self._on_show_clone_log)
+            btn_row.addWidget(btn_clone_log)
             btn_row.addStretch(1)
-            clone_grid.addLayout(btn_row, 3, 0, 1, 2)
+            clone_grid.addLayout(btn_row, 5, 0, 1, 2)
             layout.addWidget(clone_card)
 
             # 2. 1080P 窗口检测与一键校准卡
@@ -439,7 +463,7 @@ def launch_desktop_client() -> int:
 
             pipe_desc = QLabel(
                 "2. 可选：选择 MaaNikke 的 pipeline JSON 目录（如 MaaNikke\\resource\\base\\pipeline），"
-                "校验所有节点到 YES-NK 21 个原生状态机任务的映射覆盖率："
+                "校验所有节点到 YES-NK 22 个原生状态机任务的映射覆盖率："
             )
             pipe_desc.setWordWrap(True)
             pipe_desc.setStyleSheet("color:#475569; padding-top:6px;")
@@ -481,9 +505,29 @@ def launch_desktop_client() -> int:
             st.run_mode = self.mode_combo.currentData()
             st.desktop_name = self.desktop_name_input.text().strip() or "YES_NK_Desktop"
             st.window_title = self.window_title_input.text().strip() or "NIKKE"
+            st.game_exe_path = self.game_exe_input.text().strip()
             st.daily_toggles = {
                 name: cb.isChecked() for name, cb in self.daily_checkboxes.items()
             }
+
+        def _on_browse_game_exe(self) -> None:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "选择 nikke.exe 或 wegame.exe",
+                "",
+                "可执行文件 (*.exe);;所有文件 (*.*)",
+            )
+            if file_path:
+                self.game_exe_input.setText(file_path)
+
+        def _on_show_clone_log(self) -> None:
+            log_path = get_clone_log_path()
+            tail = read_log_tail(log_path, max_chars=2400)
+            if not tail:
+                QMessageBox.information(self, "分身诊断日志", f"暂无日志记录（路径：{log_path}）。")
+                return
+            self.nav_list.setCurrentRow(3)
+            self._append_log(f"--- 分身诊断日志 ({log_path}) ---\n{tail}")
 
         def _on_save_config(self) -> None:
             self._sync_form_to_controller()
@@ -493,6 +537,9 @@ def launch_desktop_client() -> int:
 
         def _on_launch_ok(self, debug: bool = False) -> None:
             self._sync_form_to_controller()
+            if self.controller.state.run_mode == "desktop_clone":
+                self._on_launch_in_clone(debug=debug)
+                return
             self.controller.save_state()
             argv = self.controller.build_ok_launch_argv(debug=debug)
             self._append_log(f"启动自动化引擎: {' '.join(argv)}")
@@ -502,16 +549,37 @@ def launch_desktop_client() -> int:
                 self._append_log(f"启动失败: {exc}")
                 QMessageBox.warning(self, "启动失败", str(exc))
 
-        def _on_launch_in_clone(self) -> None:
+        def _on_launch_in_clone(self, debug: bool = False) -> None:
             idx = self.mode_combo.findData("desktop_clone")
             if idx >= 0:
                 self.mode_combo.setCurrentIndex(idx)
-            self._on_launch_ok(debug=False)
+            self._sync_form_to_controller()
+            self._append_log(f"正在创建并校验桌面分身 [{self.controller.state.desktop_name}] ...")
+            result = self.controller.enter_desktop_clone(auto_start_ok=True, debug=debug)
+            if result.ok:
+                action = "已切入运行中的桌面分身" if result.reused_existing else "已创建并进入桌面分身"
+                self._append_log(
+                    f"{action} [{self.controller.state.desktop_name}] (PID={result.pid})，"
+                    f"按 {self.controller.state.switch_hotkey} 可随时切回主桌面。"
+                )
+            else:
+                self._append_log(f"启动桌面分身失败：{result.error_message}")
+                QMessageBox.warning(
+                    self,
+                    "启动桌面分身失败",
+                    f"{result.error_message}\n\n日志文件：{result.log_path}\n"
+                    "提示：若国服 WeGame/ACE 拦截，请尝试以管理员身份运行 YES-NK，"
+                    "或切换为“后台窗口消息模式 (PostMessage)”。",
+                )
 
         def _on_switch_default(self) -> None:
             mgr = self.controller.create_desktop_clone_manager()
             ok = mgr.switch_to_default()
-            self._append_log("已切回 Windows 主桌面" if ok else "切回主桌面失败（请确认在 Windows 下运行）")
+            self._append_log(
+                "已切回 Windows 主桌面"
+                if ok
+                else f"切回主桌面失败：{mgr.last_error_message or '请确认在 Windows 下运行'}"
+            )
 
         def _on_check_live_window(self) -> None:
             self._sync_form_to_controller()

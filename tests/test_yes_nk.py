@@ -155,18 +155,71 @@ class YesNkCoreTests(unittest.TestCase):
         self.assertEqual(too_small.status, "too_small")
 
     def test_desktop_clone_config_and_interactions(self) -> None:
+        import os
+        from yes_nk.gui.clone_host import build_in_clone_ok_argv
+        from yes_nk.utils.desktop_clone import (
+            MOD_ALT,
+            MOD_CONTROL,
+            MOD_NOREPEAT,
+            MOD_SHIFT,
+            build_command_line,
+            parse_hotkey_spec,
+        )
+
         dc = DesktopCloneConfig(desktop_name="YES NK 桌面#1")
         self.assertEqual(dc.sanitized_desktop_name(), "YES_NK____1")
 
         mgr = WindowsDesktopCloneManager(dc)
         self.assertEqual(mgr.build_process_desktop_attr(), "WinSta0\\YES_NK____1")
 
+        # 热键解析验证（Ctrl+Alt+F12 / Ctrl+Shift+H）
+        mods_f12, vk_f12 = parse_hotkey_spec("Ctrl+Alt+F12")
+        self.assertEqual(mods_f12, MOD_NOREPEAT | MOD_CONTROL | MOD_ALT)
+        self.assertEqual(vk_f12, 0x7B)
+
+        mods_h, vk_h = parse_hotkey_spec("Ctrl+Shift+H")
+        self.assertEqual(mods_h, MOD_NOREPEAT | MOD_CONTROL | MOD_SHIFT)
+        self.assertEqual(vk_h, ord("H"))
+
+        # 带空格路径的命令行安全转义
+        cmd = build_command_line([r"C:\Program Files\Python311\python.exe", r"D:\YES NK\main.py", "--clone-host"])
+        self.assertIn('"C:\\Program Files\\Python311\\python.exe"', cmd)
+        self.assertIn("--clone-host", cmd)
+
+        # 验证已存活 Clone Host 复用检测（避免重复创建）
+        with tempfile.TemporaryDirectory() as tmp:
+            ready_file = Path(tmp) / "clone_host_ready.json"
+            ready_file.write_text(
+                json.dumps({"pid": os.getpid(), "desktop": mgr.desktop_name, "ts": 12345.0}),
+                encoding="utf-8",
+            )
+            self.assertEqual(mgr.check_existing_clone_host(ready_file), os.getpid())
+
+            # 不同桌面名称不误复用
+            ready_file.write_text(
+                json.dumps({"pid": os.getpid(), "desktop": "Other_Desktop", "ts": 12345.0}),
+                encoding="utf-8",
+            )
+            self.assertIsNone(mgr.check_existing_clone_host(ready_file))
+
+        ok_argv = build_in_clone_ok_argv(debug=True)
+        self.assertIn("--in-clone", ok_argv)
+        self.assertIn("--debug", ok_argv)
+
         self.assertEqual(resolve_ok_interaction_class("desktop_clone"), "ForegroundPostMessage")
         self.assertEqual(resolve_ok_interaction_class("background_post_message"), "PostMessage")
         self.assertEqual(resolve_ok_interaction_class("foreground_compat"), "Pynput")
 
-        parsed = build_desktop_clone_config({"desktop_clone": {"run_mode": "background_post_message"}})
+        parsed = build_desktop_clone_config(
+            {
+                "desktop_clone": {
+                    "run_mode": "background_post_message",
+                    "game_exe_path": r"D:\Games\NIKKE\nikke.exe",
+                }
+            }
+        )
         self.assertEqual(parsed.run_mode, "background_post_message")
+        self.assertEqual(parsed.game_exe_path, r"D:\Games\NIKKE\nikke.exe")
 
     def test_safety_guards_shop_cash_and_recruit(self) -> None:
         # 1. 普通商店钻石防误买护栏

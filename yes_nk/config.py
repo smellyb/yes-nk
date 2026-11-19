@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 from yes_nk import __version__
@@ -17,12 +18,19 @@ from yes_nk.utils.desktop_clone import (
     validate_run_mode,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False):
+    PROJECT_ROOT = Path(sys.executable).resolve().parent
+    RESOURCE_ROOT = Path(getattr(sys, "_MEIPASS", PROJECT_ROOT)).resolve()
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+    RESOURCE_ROOT = PROJECT_ROOT
+
 USER_OVERRIDE_CONFIG = PROJECT_ROOT / "yes_nk_config.json"
+LOGS_DIR = PROJECT_ROOT / "logs"
 
 
 def load_user_overrides(config_path: Path = USER_OVERRIDE_CONFIG) -> dict[str, Any]:
-    """加载 Web 工作台导出的 yes_nk_config.json（若不存在则返回空字典）。"""
+    """加载 Web 工作台或桌面客户端导出的 yes_nk_config.json（若不存在则返回空字典）。"""
     if not config_path.exists():
         return {}
     try:
@@ -38,7 +46,9 @@ def build_desktop_clone_config(overrides: dict[str, Any]) -> DesktopCloneConfig:
         desktop_name=str(dc.get("desktop_name", "YES_NK_Desktop")),
         switch_hotkey=str(dc.get("switch_hotkey", "Ctrl+Alt+F12")),
         auto_close_desktop_on_exit=bool(dc.get("auto_close_desktop_on_exit", True)),
+        launch_explorer_in_clone=bool(dc.get("launch_explorer_in_clone", False)),
         prefer_borderless_1080p=bool(dc.get("prefer_borderless_1080p", True)),
+        game_exe_path=str(dc.get("game_exe_path", "")),
     )
 
 
@@ -49,8 +59,8 @@ _client_overrides = _overrides.get("client", {})
 config: dict[str, Any] = {
     "debug": False,
     "use_gui": True,
-    "config_folder": "configs",
-    "gui_icon": "assets/icon.png",
+    "config_folder": str((PROJECT_ROOT / "configs").as_posix()),
+    "gui_icon": str((RESOURCE_ROOT / "assets" / "icon.png").as_posix()),
     "gui_title": "YES-NK — 胜利女神：新的希望 日常自动化",
     "version": __version__,
     "ocr": {
@@ -67,7 +77,7 @@ config: dict[str, Any] = {
         "min_size": (1280, 720),
         "resize_to": [(1920, 1080), (1600, 900), (1280, 720)],
     },
-    "coco_feature_json": str((PROJECT_ROOT / "assets" / "result.json").as_posix()),
+    "coco_feature_json": str((RESOURCE_ROOT / "assets" / "result.json").as_posix()),
     "windows": {
         "exe": ["nikke.exe", "NIKKE.exe"],
         "title": str(_client_overrides.get("windowTitle", "NIKKE")),
