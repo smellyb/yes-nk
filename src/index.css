@@ -3,18 +3,97 @@
 
 @layer base {
   :root {
-    --font-sans: "Plus Jakarta Sans", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-sans: "Plus Jakarta Sans", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Microsoft YaHei UI", sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+    /* YES-BD2 淡紫 (Light) exact design tokens */
+    --yes-bg: #F4F3F9;
+    --yes-side: #EEECF6;
+    --yes-card: #FFFFFF;
+    --yes-inset: #F6F5FA;
+    --yes-line: #EEECF6;
+    --yes-line2: #DEDBEA;
+    --yes-well: #ECEAF3;
+    --yes-well2: #DCD9E8;
+    --yes-raised: #FFFFFF;
+    --yes-fill: #ECEAF3;
+    --yes-fill-hover: #DCD9E8;
+    --yes-ink: #1F1D29;
+    --yes-ink2: #4A4759;
+    --yes-ink3: #5C596B;
+    --yes-primary: #7467C4;
+    --yes-primary-hover: #675AB5;
+    --yes-on-primary: #FFFFFF;
+    --yes-accent-soft: #EFEDF6;
+    --yes-ghost-ink: #5B4FB0;
+    --yes-ok: #2E7A70;
+    --yes-ok-soft: #E4F1EF;
+    --yes-warn: #B98012;
+    --yes-warn-soft: #FAF0D7;
+    --yes-bad: #D4788C;
+    --yes-bad-soft: #FAEBEF;
+    --yes-skip: #C9C5D8;
+    --yes-shot: #1B1A26;
+    --yes-nav-icon: #4F4B60;
+    --yes-nav-on: #FFFFFF;
+    --yes-ring: #DEDBEA;
+    --yes-row-on: #EFEDF6;
+    --yes-card-shadow: 0 4px 18px rgba(74, 63, 140, 0.065), 0 1px 3px rgba(74, 63, 140, 0.04);
+  }
+
+  .dark {
+    /* YES-BD2 深色 (Dark) exact design tokens */
+    --yes-bg: #16151D;
+    --yes-side: #2B2A37;
+    --yes-card: #23222E;
+    --yes-inset: #1E1D27;
+    --yes-line: #2B2A37;
+    --yes-line2: #383646;
+    --yes-well: #1A1922;
+    --yes-well2: #3A3849;
+    --yes-raised: #3A3849;
+    --yes-fill: #33313F;
+    --yes-fill-hover: #3F3D4D;
+    --yes-ink: #ECEAF4;
+    --yes-ink2: #B5B2C4;
+    --yes-ink3: #9B98AD;
+    --yes-primary: #7467C4;
+    --yes-primary-hover: #8A80D8;
+    --yes-on-primary: #FFFFFF;
+    --yes-accent-soft: #2C2A3B;
+    --yes-ghost-ink: #B4ABF6;
+    --yes-ok: #93CFC5;
+    --yes-ok-soft: #1F3534;
+    --yes-warn: #E3B04B;
+    --yes-warn-soft: #382F22;
+    --yes-bad: #D4788C;
+    --yes-bad-soft: #38252F;
+    --yes-skip: #4C4A5B;
+    --yes-shot: #0E0D13;
+    --yes-nav-icon: #C6C3D5;
+    --yes-nav-on: #23222E;
+    --yes-ring: #383646;
+    --yes-row-on: #2C2A3B;
+    --yes-card-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
   }
 
   body {
     font-family: var(--font-sans);
+    background-color: var(--yes-bg);
+    color: var(--yes-ink);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
   }
 
   code, pre, .font-mono {
     font-family: var(--font-mono);
   }
+}
+
+.yes-card {
+  background-color: var(--yes-card);
+  border-radius: 20px;
+  box-shadow: var(--yes-card-shadow);
 }
 
 .tabular-nums {

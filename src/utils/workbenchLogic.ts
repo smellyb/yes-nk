@@ -168,3 +168,44 @@ export function buildYesNkExportConfig(
     })),
   };
 }
+
+export function partitionDailyAndWeeklyTasks(tasks: AutomationTask[]): {
+  daily: AutomationTask[];
+  weeklyOrEvent: AutomationTask[];
+} {
+  const daily: AutomationTask[] = [];
+  const weeklyOrEvent: AutomationTask[] = [];
+  for (const task of tasks) {
+    if (task.category === '联盟与活动') {
+      weeklyOrEvent.push(task);
+    } else {
+      daily.push(task);
+    }
+  }
+  return { daily, weeklyOrEvent };
+}
+
+export function formatDurationClock(totalSeconds: number): string {
+  const safe = Math.max(0, Math.round(totalSeconds));
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+export function computeRunSummaryStats(
+  queue: AutomationTask[],
+  statuses: Record<string, string>
+): { done: number; skipped: number; failed: number; remaining: number } {
+  let done = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const t of queue) {
+    const st = statuses[t.id];
+    if (st === 'completed') done += 1;
+    else if (st === 'skipped') skipped += 1;
+    else if (st === 'failed') failed += 1;
+  }
+  const remaining = Math.max(0, queue.length - done - skipped - failed);
+  return { done, skipped, failed, remaining };
+}
+

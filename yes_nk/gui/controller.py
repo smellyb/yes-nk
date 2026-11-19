@@ -84,6 +84,9 @@ class DesktopLauncherState:
     game_exe_path: str = ""
     ocr_confidence: float = 0.78
     template_threshold: float = 0.82
+    theme_mode: str = "light"  # "light" (淡紫) | "dark" (深色)
+    autorun_enabled: bool = False
+    autorun_in_clone: bool = True
     daily_toggles: dict[str, bool] | None = None
 
     def __post_init__(self) -> None:
@@ -116,6 +119,7 @@ class DesktopClientController:
 
         dc = data.get("desktop_clone", {})
         client = data.get("client", {})
+        ui = data.get("ui", {})
         state.run_mode = validate_run_mode(str(dc.get("run_mode", state.run_mode)))
         state.desktop_name = str(dc.get("desktop_name", state.desktop_name))
         state.switch_hotkey = str(dc.get("switch_hotkey", state.switch_hotkey))
@@ -132,6 +136,10 @@ class DesktopClientController:
         state.template_threshold = float(
             client.get("templateThreshold", state.template_threshold)
         )
+        saved_theme = str(ui.get("theme_mode", state.theme_mode))
+        state.theme_mode = "dark" if saved_theme == "dark" else "light"
+        state.autorun_enabled = bool(ui.get("autorun_enabled", state.autorun_enabled))
+        state.autorun_in_clone = bool(ui.get("autorun_in_clone", state.autorun_in_clone))
 
         saved_daily = data.get("daily_toggles", {})
         if isinstance(saved_daily, dict):
@@ -172,6 +180,11 @@ class DesktopClientController:
                 "ocrConfidence": self.state.ocr_confidence,
                 "templateThreshold": self.state.template_threshold,
                 "autoReturnLobby": True,
+            },
+            "ui": {
+                "theme_mode": self.state.theme_mode,
+                "autorun_enabled": self.state.autorun_enabled,
+                "autorun_in_clone": self.state.autorun_in_clone,
             },
             "daily_toggles": dict(self.state.daily_toggles or DEFAULT_DAILY_TOGGLES),
         }

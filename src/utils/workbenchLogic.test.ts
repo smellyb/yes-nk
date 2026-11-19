@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import {
   buildLaunchCommand,
   buildYesNkExportConfig,
+  computeRunSummaryStats,
   evaluateClientGeometry,
+  formatDurationClock,
+  partitionDailyAndWeeklyTasks,
   reorderTasks,
   resolveInteractionBackend,
   sanitizeDesktopName,
@@ -74,3 +77,20 @@ test('buildYesNkExportConfig emits Python-compatible desktop_clone, daily_toggle
   assert.equal(exported.daily_toggles['大型活动刷取与签到'], false);
   assert.equal(exported.onetime_tasks[0].module, INITIAL_TASKS[0].pythonModule);
 });
+
+test('YES-BD2 shell helpers partition tasks, format clocks, and compute summary stats', () => {
+  const { daily, weeklyOrEvent } = partitionDailyAndWeeklyTasks(INITIAL_TASKS);
+  assert.equal(daily.length + weeklyOrEvent.length, 22);
+  assert.ok(weeklyOrEvent.length >= 2);
+  assert.equal(formatDurationClock(0), '0:00');
+  assert.equal(formatDurationClock(125), '2:05');
+
+  const sample = INITIAL_TASKS.slice(0, 4);
+  const stats = computeRunSummaryStats(sample, {
+    [sample[0].id]: 'completed',
+    [sample[1].id]: 'completed',
+    [sample[2].id]: 'skipped',
+  });
+  assert.deepEqual(stats, { done: 2, skipped: 1, failed: 0, remaining: 1 });
+});
+

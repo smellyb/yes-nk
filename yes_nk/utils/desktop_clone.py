@@ -90,6 +90,8 @@ END_REQUEST_WAIT_SECONDS = 10.0
 
 # 最近一次 open_viewer() 失败原因："" | "declined" | "blocked" | "unsupported"
 open_failure: dict[str, str] = {"why": ""}
+# 最近一次 run_setup() 失败原因："" | "unsupported" | "missing_script" | "launch_error"
+setup_failure: dict[str, str] = {"why": "", "detail": ""}
 
 OK, WARN, BAD = "ok", "warn", "bad"
 
@@ -639,28 +641,78 @@ def clone_open() -> bool:
     return _in_clone_session(_tool_names() | GAME_NAMES)
 
 
-def run_setup(undo: bool = False, allow_rdp: bool = False) -> bool:
-    """在独立 PowerShell 窗口中运行 setup.ps1（第一次设定或一键还原桌面分身）。"""
-    if sys.platform != "win32" or not SETUP_SCRIPT.exists():
-        return False
+def resolve_setup_script() -> Path:
+    """定位 tools/clone_desktop/setup.ps1（兼容源码运行与 PyInstaller 打包目录）。"""
+    for candidate in (
+        SETUP_SCRIPT,
+        APP_ROOT / "tools" / "clone_desktop" / "setup.ps1",
+        Path(__file__).resolve().parents[2] / "tools" / "clone_desktop" / "setup.ps1",
+    ):
+        if candidate.exists():
+            return candidate
+    return SETUP_SCRIPT
+
+
+def resolve_powershell_exe() -> str:
+    """优先使用系统自带 Windows PowerShell 5.1 绝对路径，避免 PATH 缺失导致启动失败。"""
+    if sys.platform == "win32":
+        system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+        candidate = system_root / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        if candidate.exists():
+            return str(candidate)
+    return "powershell.exe"
+
+
+def build_setup_command(
+    script_path: Optional[Path] = None,
+    undo: bool = False,
+    allow_rdp: bool = False,
+) -> list[str]:
+    """构造拉起 setup.ps1 的命令行参数。"""
+    target = script_path or resolve_setup_script()
     command = [
-        "powershell.exe",
+        resolve_powershell_exe(),
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        str(SETUP_SCRIPT),
+        str(target),
     ]
     if undo:
         command.append("-Undo")
     if allow_rdp:
         command.append("-AllowRdp")
-    subprocess.Popen(
-        command,
-        cwd=str(APP_ROOT),
-        creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
-    )
-    return True
+    return command
+
+
+def run_setup(undo: bool = False, allow_rdp: bool = False) -> bool:
+    """在独立 PowerShell 窗口中运行 setup.ps1（第一次设定或一键还原桌面分身）。"""
+    setup_failure["why"] = ""
+    setup_failure["detail"] = ""
+    if sys.platform != "win32":
+        setup_failure["why"] = "unsupported"
+        setup_failure["detail"] = "仅支持在 Windows 系统下运行桌面分身设定。"
+        return False
+
+    script = resolve_setup_script()
+    if not script.exists():
+        setup_failure["why"] = "missing_script"
+        setup_failure["detail"] = f"未找到设定脚本：{script}"
+        return False
+
+    command = build_setup_command(script_path=script, undo=undo, allow_rdp=allow_rdp)
+    try:
+        subprocess.Popen(
+            command,
+            cwd=str(script.parent),
+            close_fds=True,
+            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
+        )
+        return True
+    except OSError as exc:
+        setup_failure["why"] = "launch_error"
+        setup_failure["detail"] = f"无法启动 PowerShell 运行设定脚本：{exc}"
+        return False
 
 
 def update_viewer() -> None:

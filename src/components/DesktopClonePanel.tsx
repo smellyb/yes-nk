@@ -1,5 +1,14 @@
 import { useState } from 'react';
-import { Check, Copy, Monitor, ShieldCheck, AlertTriangle } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Monitor,
+  ShieldCheck,
+} from 'lucide-react';
 import { DesktopCloneSettings, RunMode } from '../types';
 import {
   buildLaunchCommand,
@@ -14,6 +23,98 @@ interface DesktopClonePanelProps {
   onApplyResolution: (res: '1920x1080' | '1600x900' | '1280x720') => void;
 }
 
+const PC_CHECK_ROWS: {
+  label: string;
+  text: string;
+  tone: 'ok' | 'warn';
+  note?: string;
+}[] = [
+  {
+    label: 'Windows',
+    text: 'Windows 10/11 专业版、企业版或教育版可用（家庭版不含子会话）',
+    tone: 'ok',
+  },
+  {
+    label: '第一次设定',
+    text: '桌面客户端点击「第一次设定」自动编译 CloneDesktop.exe 并开启 WTSEnableChildSessions',
+    tone: 'warn',
+    note: 'setup.ps1',
+  },
+  {
+    label: '远程桌面服务',
+    text: '依赖系统 TermService（若被优化工具停用，桌面端可一键「帮我打开」）',
+    tone: 'ok',
+  },
+  {
+    label: '登录账户',
+    text: '支持微软账户与本地账户，凭据仅保存于本机 Windows 凭据管理器',
+    tone: 'ok',
+  },
+  {
+    label: '要打的密码',
+    text: '微软账户密码或本地账户密码（注意：不是开机 PIN，也不是人脸）',
+    tone: 'ok',
+  },
+  {
+    label: 'Windows Hello',
+    text: '如开启了「仅允许 Windows Hello 登录」，桌面端支持一键「帮我关掉」',
+    tone: 'ok',
+  },
+];
+
+const FIRST_USE_STEPS = [
+  '首页按「在桌面分身跑」（或先按「第一次设定」）',
+  'Windows 管理员确认按「是」',
+  '打上面写的账户密码（非 PIN），勾「记住」',
+];
+
+const TROUBLESHOOT_QA: { q: string; steps: string[] }[] = [
+  {
+    q: '提示「登录失败」',
+    steps: [
+      '密码打上面「要打的密码」那组，不是 PIN。',
+      '平常只用 PIN 或人脸开机：按 Win+L 锁屏，选钥匙图标，用账户密码登录电脑一次。',
+      '再按一次桌面端首页的「在桌面分身跑」。',
+    ],
+  },
+  {
+    q: '提示「连不上桌面分身」（代码 516 等）',
+    steps: [
+      '关掉工具，重新打开再按一次。',
+      '重启电脑后再试（刚开启子会话时 Windows 常需要重启一次生效）。',
+      '装过系统精简工具或 RDP Wrapper 的电脑可能无法使用子会话。',
+    ],
+  },
+  {
+    q: '提示「分身程序不见了」',
+    steps: [
+      '在防毒软件（如 360、火绒）中将 %LOCALAPPDATA%\\yes-nk\\clone-desktop 设为信任。',
+      '在桌面端「桌面分身」页点击「第一次设定」重新编译 CloneDesktop.exe。',
+    ],
+  },
+  {
+    q: '首页无法启动「在桌面分身跑」',
+    steps: [
+      'Windows 子会话桌面分身要求专业版 / 企业版 / 教育版，家庭版不支持。',
+      '家庭版请直接使用「后台窗口消息模式 (PostMessage)」运行。',
+    ],
+  },
+  {
+    q: '账户没有设密码',
+    steps: [
+      '没有密码的账户进不了子会话（Windows 系统安全规定）。',
+      '到 Windows「设置 > 账户 > 登录选项」先为当前账户添加一组密码。',
+    ],
+  },
+  {
+    q: '还是不行怎么排查',
+    steps: [
+      '在桌面客户端点击「打开分身文件夹」，查看 viewer.log 与 launch-result.txt。',
+      '若需彻底清理，点击「还原桌面分身」或运行 setup.ps1 -Undo 即可无痕还原。',
+    ],
+  },
+];
+
 const RUN_MODE_CARDS: {
   mode: RunMode;
   title: string;
@@ -22,24 +123,22 @@ const RUN_MODE_CARDS: {
 }[] = [
   {
     mode: 'desktop_clone',
-    title: '桌面分身模式（与 YES-BD2 完全一致）',
-    subtitle: 'Windows 子会话 (Child Session) + CloneDesktop.exe 独立窗口',
+    title: '桌面分身模式（YES-BD2 同款）',
+    subtitle: 'Windows 子会话 (Child Session) + CloneDesktop.exe',
     detail:
-      '需 Win10/11 专业版。在主桌面打开 1920×1080 独立虚拟桌面窗口（最小化也会继续画），完全不抢占主桌面鼠标键盘；支持一键设定与一键还原。',
+      '在主桌面打开 1360×820 独立窗口（内部固定 1920×1080），最小化照跑且不抢鼠标键盘。',
   },
   {
     mode: 'background_post_message',
     title: '后台窗口消息模式',
     subtitle: 'PostMessage + WGC/BitBlt 后台截图',
-    detail:
-      '无需切换桌面，直接向被其他窗口遮挡（未最小化）的 nikke.exe 发送窗口消息；若遇个别界面拖拽受限可随时切至桌面分身。',
+    detail: '家庭版首选：向未最小化的 nikke.exe 后台发送窗口消息，无需开启子会话。',
   },
   {
     mode: 'foreground_compat',
     title: '前台兼容兜底模式',
-    subtitle: 'Pynput 标准输入 · 高兼容性',
-    detail:
-      '针对国服 WeGame / ACE 严格权限环境下的最终兜底方案，保持游戏窗口置前并执行完整日常一条龙。',
+    subtitle: 'Pynput 标准输入 · 最高兼容',
+    detail: '针对 WeGame / ACE 严格权限环境下的兜底执行方案，保持游戏窗口置前运行。',
   },
 ];
 
@@ -51,8 +150,8 @@ const GEOMETRY_PRESETS: {
   note: string;
 }[] = [
   { label: '分身 1080P 无边框', width: 1920, height: 1080, dpi: 100, note: '1:1 最佳' },
-  { label: '1080P 主桌面窗口 (900p)', width: 1600, height: 900, dpi: 125, note: '16:9 缩放' },
-  { label: '1080P 主桌面小窗 (720p)', width: 1280, height: 720, dpi: 100, note: '最低合规' },
+  { label: '主桌面窗口 (900p)', width: 1600, height: 900, dpi: 125, note: '16:9 缩放' },
+  { label: '主桌面小窗 (720p)', width: 1280, height: 720, dpi: 100, note: '最低合规' },
   { label: '任务栏挤压异常示例', width: 1920, height: 1009, dpi: 100, note: '需校准' },
 ];
 
@@ -61,7 +160,8 @@ export default function DesktopClonePanel({
   onChange,
   onApplyResolution,
 }: DesktopClonePanelProps) {
-  const [copiedCmd, setCopiedCmd] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<'launch' | 'setup' | null>(null);
+  const [openQaIndex, setOpenQaIndex] = useState<number | null>(0);
 
   const verdict = evaluateClientGeometry(
     desktopClone.clientWidth,
@@ -69,322 +169,363 @@ export default function DesktopClonePanel({
     desktopClone.dpiScalePercent
   );
   const launchCmd = buildLaunchCommand(desktopClone);
+  const setupCmd = 'powershell -ExecutionPolicy Bypass -File tools\\clone_desktop\\setup.ps1';
   const sanitizedName = sanitizeDesktopName(desktopClone.desktop_name);
   const interactionBackend = resolveInteractionBackend(desktopClone.run_mode);
 
-  const handleCopyLaunch = async () => {
+  const handleCopy = async (text: string, key: 'launch' | 'setup') => {
     try {
-      await navigator.clipboard.writeText(launchCmd);
-      setCopiedCmd(true);
-      window.setTimeout(() => setCopiedCmd(false), 1800);
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      window.setTimeout(() => setCopiedKey(null), 1800);
     } catch {
-      setCopiedCmd(false);
+      setCopiedKey(null);
     }
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-          桌面分身运行模式与 1080P 显示器适配
-        </h2>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-          与 YES-BD2 完全一致的 Windows 子会话（Child Session）桌面分身方案：通过 tools/clone_desktop/setup.ps1 一次性编译独立分身窗口 CloneDesktop.exe，内嵌 1920×1080 画面且最小化持续运行。
+    <div className="max-w-5xl mx-auto space-y-5">
+      {/* Header matching YES-BD2 CloneGuidePage */}
+      <header className="space-y-0.5">
+        <h1 className="text-[23px] font-bold text-[var(--yes-ink)] tracking-tight">桌面分身</h1>
+        <p className="text-[13px] text-[var(--yes-ink2)]">
+          边跑边用电脑；Windows 子会话 (Child Session) + CloneDesktop.exe 独立窗口，进不去就照这页做
         </p>
-      </div>
+      </header>
 
-      {/* 3-tier Run Mode Selection */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-4" aria-label="运行模式选择">
-        {RUN_MODE_CARDS.map((card) => {
-          const active = desktopClone.run_mode === card.mode;
-          return (
-            <button
-              key={card.mode}
-              type="button"
-              onClick={() => onChange({ ...desktopClone, run_mode: card.mode })}
-              className={`text-left p-5 rounded-xl border transition-colors ${
-                active
-                  ? 'bg-white dark:bg-[#23272F] border-[#0067C0] dark:border-[#4CC2FF]'
-                  : 'bg-white dark:bg-[#1C1F24] border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-              }`}
+      {/* 1. 这台电脑（自动检查） */}
+      <section className="space-y-2.5" aria-label="本机子会话检查清单">
+        <h2 className="text-[15px] font-semibold text-[var(--yes-ink)] px-1">
+          这台电脑（Windows 桌面端自动检查项）
+        </h2>
+        <div className="yes-card px-5 py-3.5 divide-y divide-[var(--yes-line)]">
+          {PC_CHECK_ROWS.map((row) => (
+            <div
+              key={row.label}
+              className="py-2.5 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3"
             >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-slate-900 dark:text-white">
-                  {card.title}
-                </span>
-                {active && (
-                  <span className="text-xs font-medium text-[#0067C0] dark:text-[#4CC2FF] whitespace-nowrap shrink-0">
-                    已选定
-                  </span>
+              <div className="flex items-center gap-2.5 sm:w-36 shrink-0">
+                {row.tone === 'ok' ? (
+                  <CheckCircle2 className="w-4 h-4 text-[var(--yes-ok)] shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-[var(--yes-warn)] shrink-0" />
                 )}
+                <span className="text-xs text-[var(--yes-ink3)]">{row.label}</span>
               </div>
-              <div className="mt-1 text-xs font-mono text-slate-500 dark:text-slate-400">
-                {card.subtitle}
-              </div>
-              <p className="mt-2.5 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                {card.detail}
-              </p>
-            </button>
-          );
-        })}
+              <div className="text-[13px] text-[var(--yes-ink)] flex-1">{row.text}</div>
+              {row.note && (
+                <button
+                  type="button"
+                  onClick={() => handleCopy(setupCmd, 'setup')}
+                  className="inline-flex items-center gap-1 h-7 px-3 rounded-full text-xs bg-[var(--yes-primary)] hover:bg-[var(--yes-primary-hover)] text-white transition-colors cursor-pointer whitespace-nowrap self-start sm:self-auto"
+                >
+                  {copiedKey === 'setup' ? (
+                    <>
+                      <Check className="w-3 h-3" />
+                      已复制设定命令
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      复制首次设定
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       </section>
 
-      {/* Split Panel: Desktop Clone Config + 1080P Client Geometry Simulator */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <section className="lg:col-span-5 bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-              分身会话与启动参数
-            </h3>
-            <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-              {interactionBackend}
-            </span>
-          </div>
+      {/* 2. 第一次怎么用（3 步圆形编号卡片） */}
+      <section className="space-y-2.5" aria-label="第一次使用步骤">
+        <h2 className="text-[15px] font-semibold text-[var(--yes-ink)] px-1">第一次怎么用</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {FIRST_USE_STEPS.map((step, idx) => (
+            <div key={step} className="yes-card p-4 flex items-start gap-3">
+              <span className="w-7 h-7 rounded-full bg-[var(--yes-accent-soft)] text-[var(--yes-ghost-ink)] text-xs font-bold font-mono flex items-center justify-center shrink-0">
+                {idx + 1}
+              </span>
+              <p className="text-[14px] text-[var(--yes-ink)] leading-snug">{step}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
-          <div className="space-y-3.5 text-sm">
-            <div className="space-y-1">
-              <label
-                htmlFor="clone-desktop-name"
-                className="text-xs text-slate-500 dark:text-slate-400"
-              >
-                分身会话标识（数据目录 %LOCALAPPDATA%\yes-nk\clone-desktop）
-              </label>
-              <input
-                id="clone-desktop-name"
-                type="text"
-                value={desktopClone.desktop_name}
-                onChange={(e) =>
-                  onChange({ ...desktopClone, desktop_name: e.target.value })
-                }
-                className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
-              />
-              <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                首次设定：powershell -ExecutionPolicy Bypass -File tools\clone_desktop\setup.ps1（会话 {sanitizedName}）
+      {/* 3. 遇到问题（点开看做法） */}
+      <section className="space-y-2.5" aria-label="桌面分身常见问题">
+        <h2 className="text-[15px] font-semibold text-[var(--yes-ink)] px-1">
+          遇到问题（点开看做法）
+        </h2>
+        <div className="yes-card px-5 py-2.5 divide-y divide-[var(--yes-line)]">
+          {TROUBLESHOOT_QA.map((item, idx) => {
+            const expanded = openQaIndex === idx;
+            return (
+              <div key={item.q} className="py-2">
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setOpenQaIndex(expanded ? null : idx)}
+                  className="w-full py-1.5 flex items-center gap-2 text-left text-[14px] text-[var(--yes-ink)] hover:text-[var(--yes-primary)] transition-colors cursor-pointer"
+                >
+                  {expanded ? (
+                    <ChevronDown className="w-4 h-4 text-[var(--yes-ink3)] shrink-0" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-[var(--yes-ink3)] shrink-0" />
+                  )}
+                  <span>{item.q}</span>
+                </button>
+                {expanded && (
+                  <ol className="mt-1.5 mb-2 ml-6 p-3 rounded-[14px] bg-[var(--yes-inset)] space-y-1.5 text-[13px] text-[var(--yes-ink2)]">
+                    {item.steps.map((line, i) => (
+                      <li key={line}>
+                        {i + 1}. {line}
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </div>
-            </div>
+            );
+          })}
+        </div>
+      </section>
 
-            <div className="space-y-1">
-              <label
-                htmlFor="clone-hotkey"
-                className="text-xs text-slate-500 dark:text-slate-400"
+      {/* 4. 运行模式与 1080P 窗口适配 */}
+      <section className="space-y-3" aria-label="运行模式与1080P窗口适配">
+        <h2 className="text-[15px] font-semibold text-[var(--yes-ink)] px-1">
+          运行模式与 1080P 客户区校准
+        </h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {RUN_MODE_CARDS.map((card) => {
+            const active = desktopClone.run_mode === card.mode;
+            return (
+              <button
+                key={card.mode}
+                type="button"
+                onClick={() => onChange({ ...desktopClone, run_mode: card.mode })}
+                className={`yes-card p-4 text-left transition-all cursor-pointer border-2 ${
+                  active
+                    ? 'border-[var(--yes-primary)]'
+                    : 'border-transparent hover:border-[var(--yes-line2)]'
+                }`}
               >
-                主桌面 / 分身切换热键
-              </label>
-              <input
-                id="clone-hotkey"
-                type="text"
-                value={desktopClone.switch_hotkey}
-                onChange={(e) =>
-                  onChange({ ...desktopClone, switch_hotkey: e.target.value })
-                }
-                className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
-              />
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[14px] font-semibold text-[var(--yes-ink)]">
+                    {card.title}
+                  </span>
+                  {active && (
+                    <span className="text-xs font-medium text-[var(--yes-primary)] shrink-0">
+                      已选定
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 text-xs font-mono text-[var(--yes-ink3)]">{card.subtitle}</div>
+                <p className="mt-2 text-xs text-[var(--yes-ink2)] leading-relaxed">{card.detail}</p>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          {/* Left: Session params */}
+          <div className="lg:col-span-5 yes-card p-5 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-[15px] font-semibold text-[var(--yes-ink)]">分身会话参数</h3>
+              <span className="text-xs font-mono text-[var(--yes-ink3)]">{interactionBackend}</span>
             </div>
 
-            <div className="pt-2 space-y-2.5 border-t border-slate-200 dark:border-slate-800">
-              <label className="flex items-center justify-between gap-3 cursor-pointer">
-                <span className="text-slate-700 dark:text-slate-300">
-                  分身内默认推荐 1920×1080 无边框全屏
+            <div className="space-y-3 text-sm">
+              <div className="space-y-1">
+                <label htmlFor="clone-desktop-name" className="text-xs text-[var(--yes-ink3)]">
+                  会话标识（清洗后：{sanitizedName}）
+                </label>
+                <input
+                  id="clone-desktop-name"
+                  type="text"
+                  value={desktopClone.desktop_name}
+                  onChange={(e) => onChange({ ...desktopClone, desktop_name: e.target.value })}
+                  className="w-full h-9 px-3 text-xs font-mono rounded-xl bg-[var(--yes-inset)] text-[var(--yes-ink)] border border-[var(--yes-line2)]"
+                />
+              </div>
+
+              <label className="flex items-center justify-between gap-3 py-1 cursor-pointer">
+                <span className="text-[13px] text-[var(--yes-ink)]">
+                  分身内固定 1920×1080 无边框全屏
                 </span>
                 <input
                   type="checkbox"
                   checked={desktopClone.prefer_borderless_1080p}
                   onChange={(e) =>
-                    onChange({
-                      ...desktopClone,
-                      prefer_borderless_1080p: e.target.checked,
-                    })
+                    onChange({ ...desktopClone, prefer_borderless_1080p: e.target.checked })
                   }
-                  className="w-4 h-4 accent-[#0067C0]"
+                  className="w-4 h-4 accent-[var(--yes-primary)]"
                 />
               </label>
 
-              <label className="flex items-center justify-between gap-3 cursor-pointer">
-                <span className="text-slate-700 dark:text-slate-300">
-                  退出程序时自动释放分身桌面句柄
+              <label className="flex items-center justify-between gap-3 py-1 cursor-pointer">
+                <span className="text-[13px] text-[var(--yes-ink)]">
+                  退出程序时自动注销分身子会话
                 </span>
                 <input
                   type="checkbox"
                   checked={desktopClone.auto_close_desktop_on_exit}
                   onChange={(e) =>
-                    onChange({
-                      ...desktopClone,
-                      auto_close_desktop_on_exit: e.target.checked,
-                    })
+                    onChange({ ...desktopClone, auto_close_desktop_on_exit: e.target.checked })
                   }
-                  className="w-4 h-4 accent-[#0067C0]"
+                  className="w-4 h-4 accent-[var(--yes-primary)]"
                 />
               </label>
             </div>
-          </div>
 
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              Windows 本地推荐启动命令
-            </div>
-            <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#141619] border border-slate-200 dark:border-slate-800">
-              <code className="text-xs font-mono text-slate-800 dark:text-slate-200 truncate">
-                {launchCmd}
-              </code>
-              <button
-                type="button"
-                onClick={handleCopyLaunch}
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors shrink-0"
-              >
-                {copiedCmd ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-[#16A34A]" />
-                    已复制
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    复制
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* 1080P Screen & 16:9 Client Area Diagnostic */}
-        <section className="lg:col-span-7 bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Monitor className="w-4 h-4 text-[#0067C0] dark:text-[#4CC2FF]" />
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white">
-                1080P 屏幕窗口客户区实时校验
-              </h3>
-            </div>
-            <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-              window_1080p.py
-            </span>
-          </div>
-
-          {/* Preset Quick Buttons */}
-          <div className="flex flex-wrap gap-2">
-            {GEOMETRY_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                onClick={() => {
-                  onChange({
-                    ...desktopClone,
-                    clientWidth: preset.width,
-                    clientHeight: preset.height,
-                    dpiScalePercent: preset.dpi,
-                  });
-                  if (preset.width === 1920 && preset.height === 1080) {
-                    onApplyResolution('1920x1080');
-                  } else if (preset.width === 1600 && preset.height === 900) {
-                    onApplyResolution('1600x900');
-                  } else if (preset.width === 1280 && preset.height === 720) {
-                    onApplyResolution('1280x720');
-                  }
-                }}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619] hover:border-[#0067C0] dark:hover:border-[#4CC2FF] transition-colors whitespace-nowrap shrink-0"
-              >
-                {preset.label} · {preset.note}
-              </button>
-            ))}
-          </div>
-
-          {/* Live Numeric Inputs */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1">
-              <label
-                htmlFor="client-width"
-                className="text-xs text-slate-500 dark:text-slate-400"
-              >
-                客户区宽度 (px)
-              </label>
-              <input
-                id="client-width"
-                type="number"
-                min={640}
-                max={3840}
-                value={desktopClone.clientWidth}
-                onChange={(e) =>
-                  onChange({ ...desktopClone, clientWidth: Number(e.target.value) })
-                }
-                className="w-full px-3 py-2 text-sm font-mono tabular-nums rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
-              />
-            </div>
-            <div className="space-y-1">
-              <label
-                htmlFor="client-height"
-                className="text-xs text-slate-500 dark:text-slate-400"
-              >
-                客户区高度 (px)
-              </label>
-              <input
-                id="client-height"
-                type="number"
-                min={360}
-                max={2160}
-                value={desktopClone.clientHeight}
-                onChange={(e) =>
-                  onChange({ ...desktopClone, clientHeight: Number(e.target.value) })
-                }
-                className="w-full px-3 py-2 text-sm font-mono tabular-nums rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
-              />
-            </div>
-            <div className="space-y-1">
-              <label
-                htmlFor="dpi-scale"
-                className="text-xs text-slate-500 dark:text-slate-400"
-              >
-                Windows DPI 缩放
-              </label>
-              <select
-                id="dpi-scale"
-                value={desktopClone.dpiScalePercent}
-                onChange={(e) =>
-                  onChange({ ...desktopClone, dpiScalePercent: Number(e.target.value) })
-                }
-                className="w-full px-3 py-2 text-sm font-mono tabular-nums rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
-              >
-                <option value={100}>100%</option>
-                <option value={125}>125%</option>
-                <option value={150}>150%</option>
-                <option value={175}>175%</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Diagnostic Verdict Readout */}
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                {verdict.isValid ? (
-                  <ShieldCheck className="w-4 h-4 text-[#16A34A] shrink-0" />
-                ) : (
-                  <AlertTriangle className="w-4 h-4 text-[#D97706] shrink-0" />
-                )}
-                <span
-                  className={`text-sm font-semibold ${
-                    verdict.isValid ? 'text-[#16A34A]' : 'text-[#D97706]'
-                  }`}
+            <div className="pt-3 border-t border-[var(--yes-line)] space-y-1.5">
+              <div className="text-xs text-[var(--yes-ink3)]">Windows 命令行启动</div>
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[var(--yes-inset)]">
+                <code className="text-xs font-mono text-[var(--yes-ink)] truncate">{launchCmd}</code>
+                <button
+                  type="button"
+                  onClick={() => handleCopy(launchCmd, 'launch')}
+                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs bg-[var(--yes-fill)] hover:bg-[var(--yes-fill-hover)] text-[var(--yes-ink)] shrink-0 cursor-pointer"
                 >
-                  {verdict.label}
-                </span>
+                  {copiedKey === 'launch' ? (
+                    <>
+                      <Check className="w-3 h-3 text-[var(--yes-ok)]" />
+                      已复制
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      复制
+                    </>
+                  )}
+                </button>
               </div>
+            </div>
+          </div>
 
-              <div className="flex items-center gap-3 text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                <span>纵横比 {verdict.aspectRatio}</span>
-                <span aria-hidden="true">·</span>
-                <span>误差 {verdict.ratioErrorPercent}%</span>
-                <span aria-hidden="true">·</span>
-                <span>缩放 {verdict.scaleX}x</span>
+          {/* Right: 1080P Client Geometry Simulator */}
+          <div className="lg:col-span-7 yes-card p-5 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Monitor className="w-4 h-4 text-[var(--yes-primary)]" />
+                <h3 className="text-[15px] font-semibold text-[var(--yes-ink)]">
+                  1080P 屏幕窗口客户区实时校验
+                </h3>
+              </div>
+              <span className="text-xs font-mono text-[var(--yes-ink3)]">window_1080p.py</span>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {GEOMETRY_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => {
+                    onChange({
+                      ...desktopClone,
+                      clientWidth: preset.width,
+                      clientHeight: preset.height,
+                      dpiScalePercent: preset.dpi,
+                    });
+                    if (preset.width === 1920 && preset.height === 1080) {
+                      onApplyResolution('1920x1080');
+                    } else if (preset.width === 1600 && preset.height === 900) {
+                      onApplyResolution('1600x900');
+                    } else if (preset.width === 1280 && preset.height === 720) {
+                      onApplyResolution('1280x720');
+                    }
+                  }}
+                  className="h-8 px-3 rounded-full text-xs bg-[var(--yes-fill)] hover:bg-[var(--yes-fill-hover)] text-[var(--yes-ink)] transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  {preset.label} · {preset.note}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label htmlFor="client-width" className="text-xs text-[var(--yes-ink3)]">
+                  客户区宽度 (px)
+                </label>
+                <input
+                  id="client-width"
+                  type="number"
+                  min={640}
+                  max={3840}
+                  value={desktopClone.clientWidth}
+                  onChange={(e) =>
+                    onChange({ ...desktopClone, clientWidth: Number(e.target.value) })
+                  }
+                  className="w-full h-9 px-3 text-sm font-mono tabular-nums rounded-xl bg-[var(--yes-inset)] text-[var(--yes-ink)] border border-[var(--yes-line2)]"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="client-height" className="text-xs text-[var(--yes-ink3)]">
+                  客户区高度 (px)
+                </label>
+                <input
+                  id="client-height"
+                  type="number"
+                  min={360}
+                  max={2160}
+                  value={desktopClone.clientHeight}
+                  onChange={(e) =>
+                    onChange({ ...desktopClone, clientHeight: Number(e.target.value) })
+                  }
+                  className="w-full h-9 px-3 text-sm font-mono tabular-nums rounded-xl bg-[var(--yes-inset)] text-[var(--yes-ink)] border border-[var(--yes-line2)]"
+                />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="dpi-scale" className="text-xs text-[var(--yes-ink3)]">
+                  Windows DPI 缩放
+                </label>
+                <select
+                  id="dpi-scale"
+                  value={desktopClone.dpiScalePercent}
+                  onChange={(e) =>
+                    onChange({ ...desktopClone, dpiScalePercent: Number(e.target.value) })
+                  }
+                  className="w-full h-9 px-3 text-sm font-mono tabular-nums rounded-xl bg-[var(--yes-inset)] text-[var(--yes-ink)] border border-[var(--yes-line2)]"
+                >
+                  <option value={100}>100%</option>
+                  <option value={125}>125%</option>
+                  <option value={150}>150%</option>
+                  <option value={175}>175%</option>
+                </select>
               </div>
             </div>
 
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              {verdict.recommendation}
-            </p>
+            <div className="pt-3 border-t border-[var(--yes-line)] space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {verdict.isValid ? (
+                    <ShieldCheck className="w-4 h-4 text-[var(--yes-ok)] shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-[var(--yes-warn)] shrink-0" />
+                  )}
+                  <span
+                    className={`text-sm font-semibold ${
+                      verdict.isValid ? 'text-[var(--yes-ok)]' : 'text-[var(--yes-warn)]'
+                    }`}
+                  >
+                    {verdict.label}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-[var(--yes-ink3)]">
+                  <span>纵横比 {verdict.aspectRatio}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>误差 {verdict.ratioErrorPercent}%</span>
+                  <span aria-hidden="true">·</span>
+                  <span>缩放 {verdict.scaleX}x</span>
+                </div>
+              </div>
+              <p className="text-xs text-[var(--yes-ink2)] leading-relaxed">
+                {verdict.recommendation}
+              </p>
+            </div>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }

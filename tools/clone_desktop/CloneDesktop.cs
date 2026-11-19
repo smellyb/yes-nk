@@ -1,4 +1,4 @@
-// YES-NK 桌面分身窗口程序（与 nobell001/YES-BD2 完全一致的 Windows Child Session RDP 方案）。
+﻿// YES-NK 桌面分身窗口程序（与 nobell001/YES-BD2 完全一致的 Windows Child Session RDP 方案）。
 // 参考 ChildStream (MIT, 见 LICENSE-childstream.txt) 与 YES-BD2 CloneDesktop.cs 设计。
 //
 // 用法（由 tools\clone_desktop\setup.ps1 使用系统自带 .NET 4.0 csc.exe 编译）：

@@ -1,8 +1,16 @@
-export type NavSection = 'tasks' | 'desktop' | 'triggers' | 'mappings' | 'logs' | 'settings';
+export type NavSection =
+  | 'home'
+  | 'report'
+  | 'tasks'
+  | 'desktop'
+  | 'triggers'
+  | 'mappings'
+  | 'logs'
+  | 'settings';
 
 export type RecognitionMode = 'ocr' | 'template' | 'hybrid';
 
-export type TaskStatus = 'idle' | 'running' | 'completed' | 'skipped';
+export type TaskStatus = 'idle' | 'running' | 'completed' | 'skipped' | 'failed';
 
 export type RunMode = 'desktop_clone' | 'background_post_message' | 'foreground_compat';
 
@@ -82,6 +90,17 @@ export interface LogEntry {
   level: 'INFO' | 'OCR' | 'ACTION' | 'WARN';
   source: string;
   message: string;
+}
+
+export interface RunRecord {
+  id: string;
+  taskId: string;
+  taskName: string;
+  finishedAt: string;
+  via: '一键日常' | '桌面分身' | '单项运行';
+  state: 'done' | 'skip' | 'fail';
+  durationSec: number;
+  note?: string;
 }
 
 export interface ClientSettings {

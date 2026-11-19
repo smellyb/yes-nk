@@ -219,14 +219,41 @@ class YesNkCoreTests(unittest.TestCase):
         self.assertIn("--debug", args_str)
         self.assertGreaterEqual(len(CLONE_TROUBLESHOOT_QA), 6)
 
+        from yes_nk.utils.desktop_clone import (
+            build_setup_command,
+            resolve_setup_script,
+        )
+
         root = Path(__file__).resolve().parent.parent
-        cs_text = (root / "tools" / "clone_desktop" / "CloneDesktop.cs").read_text(encoding="utf-8")
-        ps_text = (root / "tools" / "clone_desktop" / "setup.ps1").read_text(encoding="utf-8")
+        cs_bytes = (root / "tools" / "clone_desktop" / "CloneDesktop.cs").read_bytes()
+        ps_bytes = (root / "tools" / "clone_desktop" / "setup.ps1").read_bytes()
+        # Windows PowerShell 5.1 中文环境下无 UTF-8 BOM 会按 CP936 解析并吞掉引号导致闪退且不弹 UAC
+        self.assertTrue(ps_bytes.startswith(b"\xef\xbb\xbf"), "setup.ps1 必须包含 UTF-8 BOM")
+        self.assertTrue(cs_bytes.startswith(b"\xef\xbb\xbf"), "CloneDesktop.cs 必须包含 UTF-8 BOM")
+        self.assertEqual(ps_bytes.count(b"\n"), ps_bytes.count(b"\r\n"), "setup.ps1 必须使用 CRLF 换行")
+
+        cs_text = cs_bytes.decode("utf-8-sig")
+        ps_text = ps_bytes.decode("utf-8-sig")
+        for curly in ("“", "”", "‘", "’"):
+            self.assertNotIn(curly, ps_text, f"setup.ps1 不应包含中文弯引号 {curly}")
+        self.assertIn("WindowsPowerShell\\v1.0\\powershell.exe", ps_text)
+        self.assertIn("ExitCode", ps_text)
         self.assertIn("ConnectToChildSession", cs_text)
         self.assertIn("8B918B82-7985-4C24-89DF-C33AD2BBFBCD", cs_text)
         self.assertIn("WTSEnableChildSessions", ps_text)
         self.assertIn("RemoteDesktop_SuppressWhenMinimized", ps_text)
         self.assertTrue((root / "tools" / "clone_desktop" / "LICENSE-childstream.txt").exists())
+
+        resolved = resolve_setup_script()
+        self.assertTrue(resolved.exists())
+        cmd = build_setup_command(script_path=resolved, undo=True, allow_rdp=True)
+        self.assertIn("-ExecutionPolicy", cmd)
+        self.assertIn("Bypass", cmd)
+        self.assertIn("-File", cmd)
+        self.assertIn(str(resolved), cmd)
+        self.assertIn("-Undo", cmd)
+        self.assertIn("-AllowRdp", cmd)
+        self.assertIn("yes_nk.gui.theme", (root / "yes_nk.spec").read_text(encoding="utf-8"))
 
         self.assertEqual(resolve_ok_interaction_class("desktop_clone"), "ForegroundPostMessage")
         self.assertEqual(resolve_ok_interaction_class("background_post_message"), "PostMessage")
@@ -404,6 +431,14 @@ class YesNkCoreTests(unittest.TestCase):
             DesktopClientController,
             get_grouped_pipelines,
         )
+        from yes_nk.gui.theme import DARK_TOKENS, LIGHT_TOKENS, build_shell_qss
+
+        self.assertEqual(LIGHT_TOKENS["bg"], "#F4F3F9")
+        self.assertEqual(LIGHT_TOKENS["primary"], "#7467C4")
+        self.assertEqual(DARK_TOKENS["bg"], "#16151D")
+        self.assertEqual(DARK_TOKENS["side"], "#2B2A37")
+        self.assertIn("#F4F3F9", build_shell_qss("light"))
+        self.assertIn("#16151D", build_shell_qss("dark"))
 
         self.assertEqual(len(DEFAULT_DAILY_TOGGLES), 22)
         grouped = get_grouped_pipelines()
@@ -415,6 +450,8 @@ class YesNkCoreTests(unittest.TestCase):
             ctrl = DesktopClientController(config_path=cfg_path)
             ctrl.state.run_mode = "desktop_clone"
             ctrl.state.desktop_name = "YES NK 桌面"
+            ctrl.state.theme_mode = "dark"
+            ctrl.state.autorun_enabled = True
             ctrl.state.daily_toggles["邮箱一键领取"] = False
             ctrl.state.daily_toggles["大型活动刷取与签到"] = True
             ctrl.save_state()
@@ -422,6 +459,8 @@ class YesNkCoreTests(unittest.TestCase):
             reloaded = DesktopClientController(config_path=cfg_path)
             self.assertEqual(reloaded.state.run_mode, "desktop_clone")
             self.assertEqual(reloaded.state.desktop_name, "YES_NK")
+            self.assertEqual(reloaded.state.theme_mode, "dark")
+            self.assertTrue(reloaded.state.autorun_enabled)
             self.assertFalse(reloaded.state.daily_toggles["邮箱一键领取"])
             self.assertTrue(reloaded.state.daily_toggles["大型活动刷取与签到"])
 

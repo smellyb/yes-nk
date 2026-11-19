@@ -12,7 +12,8 @@ const MODE_LABELS: Record<RecognitionMode, string> = {
   hybrid: 'COCO + OCR 混合',
 };
 
-const CONVERT_CMD = 'python tools/convert_maa_assets.py --maa-dir D:\\MaaNikke\\resource\\base\\image';
+const CONVERT_CMD =
+  'python tools/convert_maa_assets.py --maa-dir D:\\MaaNikke\\resource\\base\\image';
 
 export default function MappingsPanel({ mappings }: MappingsPanelProps) {
   const [query, setQuery] = useState('');
@@ -45,40 +46,38 @@ export default function MappingsPanel({ mappings }: MappingsPanelProps) {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-            COCO 特征清单与 MaaNikke 素材转换映射
-          </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            完全对齐 YES-BD2 的 COCO 模板 + 归一化局部 ROI OCR 混合策略，所有特征均登记于 assets/coco_manifest.json。
+    <div className="max-w-5xl mx-auto space-y-5">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="space-y-0.5">
+          <h1 className="text-[23px] font-bold text-[var(--yes-ink)] tracking-tight">素材映射</h1>
+          <p className="text-[13px] text-[var(--yes-ink2)]">
+            已内置 40 项从 Shinarin/MaaNikke 转换的 1280×720 COCO 模板与局部 ROI OCR 兜底策略
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-[var(--yes-ink3)] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               aria-label="搜索场景、特征名或 OCR 关键词"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索特征名、场景或关键词..."
-              className="pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1C1F24] text-slate-900 dark:text-slate-100 w-56"
+              className="h-8 pl-8 pr-3 text-xs rounded-full bg-[var(--yes-card)] text-[var(--yes-ink)] border border-[var(--yes-line2)] w-52 outline-none focus:border-[var(--yes-primary)]"
             />
           </div>
 
-          <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-200/70 dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800">
+          <div className="flex items-center gap-1 p-1 rounded-full bg-[var(--yes-well)]">
             {(['all', 'hybrid', 'ocr', 'template'] as const).map((mode) => (
               <button
                 key={mode}
                 type="button"
                 onClick={() => setModeFilter(mode)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                className={`h-7 px-3 text-xs rounded-full transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                   modeFilter === mode
-                    ? 'bg-white dark:bg-[#2A2F38] text-slate-900 dark:text-white'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-[var(--yes-raised)] text-[var(--yes-ink)] shadow-xs font-medium'
+                    : 'text-[var(--yes-ink2)] hover:text-[var(--yes-ink)]'
                 }`}
               >
                 {mode === 'all' ? '全部' : MODE_LABELS[mode]}
@@ -86,26 +85,26 @@ export default function MappingsPanel({ mappings }: MappingsPanelProps) {
             ))}
           </div>
         </div>
-      </div>
+      </header>
 
       {/* CLI Converter Bar */}
-      <div className="bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="yes-card px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="min-w-0 space-y-1">
-          <div className="text-xs font-medium text-slate-700 dark:text-slate-200">
-            一键从 MaaNikke 导入国服模板至 ok-script COCO 特征包 (assets/result.json)
+          <div className="text-xs font-medium text-[var(--yes-ink2)]">
+            从 MaaNikke 重新刷新国服模板至 ok-script COCO 特征包 (assets/result.json)
           </div>
-          <code className="block text-xs font-mono text-[#0067C0] dark:text-[#4CC2FF] truncate">
+          <code className="block text-xs font-mono text-[var(--yes-primary)] truncate">
             {CONVERT_CMD}
           </code>
         </div>
         <button
           type="button"
           onClick={handleCopyCmd}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
+          className="inline-flex items-center gap-1.5 h-8 px-3.5 text-xs rounded-full bg-[var(--yes-fill)] hover:bg-[var(--yes-fill-hover)] text-[var(--yes-ink)] transition-colors cursor-pointer whitespace-nowrap shrink-0"
         >
           {copied ? (
             <>
-              <Check className="w-3.5 h-3.5 text-[#16A34A]" />
+              <Check className="w-3.5 h-3.5 text-[var(--yes-ok)]" />
               已复制命令
             </>
           ) : (
@@ -118,22 +117,22 @@ export default function MappingsPanel({ mappings }: MappingsPanelProps) {
       </div>
 
       {/* Mapping Table */}
-      <div className="bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto">
+      <div className="yes-card overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
-              <th className="py-3 px-4 font-medium">场景与 COCO 特征名</th>
-              <th className="py-3 px-4 font-medium">MaaNikke 原节点与识别痛点</th>
-              <th className="py-3 px-4 font-medium">YES-NK (ok-script) 识别策略</th>
-              <th className="py-3 px-4 font-medium">16:9 归一化 ROI 与 OCR 兜底词</th>
+            <tr className="border-b border-[var(--yes-line)] text-xs text-[var(--yes-ink3)]">
+              <th className="py-3.5 px-5 font-medium">场景与 COCO 特征名</th>
+              <th className="py-3.5 px-4 font-medium">MaaNikke 原节点与痛点</th>
+              <th className="py-3.5 px-4 font-medium">YES-NK 识别策略</th>
+              <th className="py-3.5 px-5 font-medium">16:9 归一化 ROI 与 OCR 兜底词</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
+          <tbody className="divide-y divide-[var(--yes-line)] text-sm">
             {filtered.length === 0 ? (
               <tr>
                 <td
                   colSpan={4}
-                  className="py-10 px-4 text-center text-sm text-slate-500 dark:text-slate-400"
+                  className="py-10 px-5 text-center text-sm text-[var(--yes-ink3)]"
                 >
                   没有匹配当前筛选条件的特征记录，请清空搜索词后重试。
                 </td>
@@ -142,39 +141,33 @@ export default function MappingsPanel({ mappings }: MappingsPanelProps) {
               filtered.map((row) => (
                 <tr
                   key={row.id}
-                  className="hover:bg-slate-50 dark:hover:bg-[#23272F] transition-colors align-top"
+                  className="hover:bg-[var(--yes-inset)] transition-colors align-top"
                 >
-                  <td className="py-3.5 px-4 whitespace-nowrap">
-                    <div className="font-medium text-slate-900 dark:text-white">
-                      {row.scene}
-                    </div>
-                    <div className="mt-0.5 text-xs font-mono text-slate-500 dark:text-slate-400">
+                  <td className="py-3.5 px-5 whitespace-nowrap">
+                    <div className="font-medium text-[var(--yes-ink)]">{row.scene}</div>
+                    <div className="mt-0.5 text-xs font-mono text-[var(--yes-ink3)]">
                       {row.featureName}
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    <div className="mt-0.5 text-xs text-[var(--yes-ink3)]">
                       {MODE_LABELS[row.mode]}
                     </div>
                   </td>
                   <td className="py-3.5 px-4 max-w-xs">
-                    <div className="text-xs font-mono text-slate-700 dark:text-slate-300">
-                      {row.maaNode}
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    <div className="text-xs font-mono text-[var(--yes-ink2)]">{row.maaNode}</div>
+                    <p className="mt-1 text-xs text-[var(--yes-ink3)] leading-relaxed">
                       {row.maaPainPoint}
                     </p>
                   </td>
                   <td className="py-3.5 px-4 max-w-xs">
-                    <div className="text-xs font-mono text-[#0067C0] dark:text-[#4CC2FF] leading-relaxed">
+                    <div className="text-xs font-mono text-[var(--yes-primary)] leading-relaxed">
                       {row.okMethod}
                     </div>
                   </td>
-                  <td className="py-3.5 px-4">
-                    <div className="text-xs font-mono tabular-nums text-slate-700 dark:text-slate-300">
+                  <td className="py-3.5 px-5">
+                    <div className="text-xs font-mono tabular-nums text-[var(--yes-ink2)]">
                       {row.roiBox}
                     </div>
-                    <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      {row.ocrFallback}
-                    </div>
+                    <div className="mt-1 text-xs text-[var(--yes-ink3)]">{row.ocrFallback}</div>
                   </td>
                 </tr>
               ))

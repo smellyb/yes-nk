@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   YES-NK 桌面分身一次性设定与一键还原脚本（与 YES-BD2 完全一致的 Windows Child Session 方案）。
 
@@ -143,9 +143,9 @@ function Invoke-AdminPart {
     Say 'fDenyTSConnections = 0（允许本机连接桌面分身）'
     $service = Get-Service -Name TermService
     if ($service.Status -ne 'Running') {
-        if ("$($service.StartType)" -eq 'Disabled') { throw '“远程桌面服务”(TermService) 已被禁用，桌面分身需要该服务' }
+        if ("$($service.StartType)" -eq 'Disabled') { throw '「远程桌面服务」(TermService) 已被禁用，桌面分身需要该服务' }
         Start-Service -Name TermService
-        Say '已启动“远程桌面服务”(TermService)'
+        Say '已启动「远程桌面服务」(TermService)'
     }
 }
 
@@ -155,20 +155,26 @@ function Invoke-Elevated {
         Invoke-AdminPart
         return $true
     }
+    $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (-not (Test-Path -LiteralPath $psExe)) { $psExe = 'powershell.exe' }
     $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"",
         '-AdminPart', '-DataDir', "`"$DataDir`"")
     if ($Undo) { $argList += '-Undo' }
     if ($AllowRdp) { $argList += '-AllowRdp' }
     $before = if (Test-Path -LiteralPath $logFile) { @(Get-Content -LiteralPath $logFile -Encoding UTF8).Count } else { 0 }
-    Write-Host '弹出“用户账户控制 (UAC)”提示时请点击「是」。'
+    Write-Host '弹出「用户账户控制 (UAC)」提示时请点击「是」。'
     try {
-        $p = Start-Process -FilePath powershell.exe -ArgumentList $argList -Verb RunAs -Wait -PassThru -WindowStyle Hidden
+        $p = Start-Process -FilePath $psExe -ArgumentList $argList -Verb RunAs -Wait -PassThru -WindowStyle Hidden
     } catch {
         Say '未允许管理员权限，系统设定未修改。'
         return $false
     }
     if (Test-Path -LiteralPath $logFile) {
         Get-Content -LiteralPath $logFile -Encoding UTF8 | Select-Object -Skip $before | ForEach-Object { Write-Host $_ }
+    }
+    if ($null -ne $p -and $p.ExitCode -ne 0) {
+        Say ('管理员设定子进程异常退出（代码 {0}），请查看日志：{1}' -f $p.ExitCode, $logFile)
+        return $false
     }
     $true
 }
@@ -185,9 +191,16 @@ function Install {
     }
 
     $termService = Get-CimInstance -ClassName Win32_Service -Filter "Name='TermService'" -ErrorAction SilentlyContinue
-    if (-not $termService) { throw '本机缺少“远程桌面服务”(TermService)，无法使用桌面分身（常见于精简版 Windows 或优化工具）' }
-    if ($termService.StartMode -eq 'Disabled') {
-        Say '注意：“远程桌面服务”已被禁用，请在 YES-NK 桌面分身页面点击「帮我打开」。'
+    if (-not $termService) {
+        $svcFallback = Get-Service -Name TermService -ErrorAction SilentlyContinue
+        if (-not $svcFallback) {
+            throw '本机缺少「远程桌面服务」(TermService)，无法使用桌面分身（常见于精简版 Windows 或优化工具）'
+        }
+        if ("$($svcFallback.StartType)" -eq 'Disabled') {
+            Say '注意：「远程桌面服务」已被禁用，请在 YES-NK 桌面分身页面点击「帮我打开」。'
+        }
+    } elseif ($termService.StartMode -eq 'Disabled') {
+        Say '注意：「远程桌面服务」已被禁用，请在 YES-NK 桌面分身页面点击「帮我打开」。'
     }
 
     $csc = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'

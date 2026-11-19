@@ -32,6 +32,7 @@ hidden_imports = [
     "yes_nk.tasks.PopupGuardTrigger",
     "yes_nk.gui.desktop_client",
     "yes_nk.gui.controller",
+    "yes_nk.gui.theme",
     "tools.convert_maa_assets",
 ]
 
