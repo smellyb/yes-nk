@@ -23,6 +23,7 @@ import {
 import DesktopClonePanel from './components/DesktopClonePanel';
 import MappingsPanel from './components/MappingsPanel';
 import {
+  BASIC_DAILY_IDS,
   INITIAL_DESKTOP_CLONE,
   INITIAL_SETTINGS,
   INITIAL_TASKS,
@@ -83,7 +84,7 @@ export default function App() {
       level: 'INFO',
       source: 'YES-NK',
       message:
-        '已对齐国服《胜利女神：新的希望》Python ok-script 架构（基础日常一条龙 + 桌面分身 + 1080P 适配）。',
+        '已完整转换 Shinarin/MaaNikke 全部 21 条国服自动化流水线至 YES-NK ok-script 架构（桌面分身 + 1080P 适配）。',
     },
   ]);
   const [logFilter, setLogFilter] = useState<'ALL' | LogEntry['level']>('ALL');
@@ -300,7 +301,7 @@ export default function App() {
   ];
 
   const sectionBreadcrumbs: Record<NavSection, string> = {
-    tasks: 'YES-NK / 国服基础日常一条龙',
+    tasks: 'YES-NK / 全量日常一条龙（21 条 MaaNikke 转换流水线）',
     desktop: 'YES-NK / 仿 YES-BD2 桌面分身与 1080P 适配',
     triggers: 'YES-NK / 后台触发守护',
     mappings: 'YES-NK / COCO 特征与 MaaNikke 素材转换',
@@ -308,7 +309,7 @@ export default function App() {
     settings: 'YES-NK / 客户端参数与配置导出',
   };
 
-  const categories = ['全部', '基础日常', '基地与养成', '商店与结算'];
+  const categories = ['全部', '启动与奖励', '商店相关', '日常养成', '副本挑战', '联盟与活动'];
 
   return (
     <div className="min-h-screen flex bg-[#F3F4F6] text-slate-900 dark:bg-[#141619] dark:text-slate-100">
@@ -485,6 +486,17 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    onClick={() =>
+                      setTasks((prev) =>
+                        prev.map((t) => ({ ...t, enabled: BASIC_DAILY_IDS.has(t.id) }))
+                      )
+                    }
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1C1F24] hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
+                  >
+                    仅基础日常
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setTasks((prev) => prev.map((t) => ({ ...t, enabled: true })))}
                     className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1C1F24] hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
                   >
@@ -496,7 +508,7 @@ export default function App() {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1C1F24] hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
-                    恢复默认顺序
+                    恢复默认
                   </button>
                 </div>
               </div>
@@ -608,7 +620,7 @@ export default function App() {
                 </section>
 
                 {/* Right Detail Panel */}
-                <aside className="lg:col-span-5 bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-5">
+                <aside className="lg:col-span-5 lg:sticky lg:top-0 bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-5">
                   <div className="space-y-1.5 pb-4 border-b border-slate-200 dark:border-slate-800">
                     <div className="flex items-center justify-between gap-2">
                       <h2 className="text-base font-semibold text-slate-900 dark:text-white">

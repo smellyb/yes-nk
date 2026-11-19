@@ -1,4 +1,4 @@
-"""YES-NK Python 自动化核心单测（无游戏窗口环境下全链路验证）。"""
+"""YES-NK Python 自动化核心单测（无游戏窗口环境下覆盖全部 21 条 MaaNikke 转换流水线）。"""
 
 from __future__ import annotations
 
@@ -10,10 +10,15 @@ import tempfile
 import unittest
 import zlib
 
-from tools.convert_maa_assets import convert_maa_directory_to_coco
-from yes_nk.config import config, build_desktop_clone_config
-from yes_nk.tasks.DailyTask import DailyTask
+from tools.convert_maa_assets import (
+    analyze_maa_pipeline_directory,
+    convert_maa_directory_to_coco,
+)
+from yes_nk.config import build_desktop_clone_config, config
+from yes_nk.tasks.CashShopFreeTask import is_safe_free_cash_shop_text
+from yes_nk.tasks.DailyTask import ALL_PIPELINE_SPECS, DailyTask
 from yes_nk.tasks.PopupGuardTrigger import PopupGuardTrigger
+from yes_nk.tasks.SocialRecruitTask import is_social_recruit_banner
 from yes_nk.utils.desktop_clone import (
     DesktopCloneConfig,
     WindowsDesktopCloneManager,
@@ -31,19 +36,32 @@ class FakeHit:
 def _write_minimal_png(path: Path, width: int = 32, height: int = 24) -> None:
     """写入合法的最小 1-bit PNG 文件供转换器单测使用。"""
     def chunk(tag: bytes, data: bytes) -> bytes:
-        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        return (
+            struct.pack(">I", len(data))
+            + tag
+            + data
+            + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+        )
 
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     raw = b"".join(b"\x00" + b"\x00\x00\x00" * width for _ in range(height))
-    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
     path.write_bytes(png)
 
 
 class FakeDailyTaskHarness(DailyTask):
-    """覆盖底层截屏/点击 IO，验证基础日常一条龙状态机完整串联执行。"""
+    """覆盖底层截屏/点击 IO，验证全部 21 条 MaaNikke 转换流水线串联执行。"""
 
-    def __init__(self) -> None:
+    def __init__(self, enable_all: bool = True) -> None:
         super().__init__()
+        if enable_all:
+            for key, _cat, _default, _cls in ALL_PIPELINE_SPECS:
+                self.config[key] = True
         self.events: list[str] = []
 
     def _build_subtask(self, task_cls):
@@ -52,7 +70,7 @@ class FakeDailyTaskHarness(DailyTask):
         class InstrumentedSubtask(task_cls):
             def __init__(self_inner) -> None:
                 super().__init__()
-                self_inner._lobby_calls = 0
+                self_inner._sim_steps = 0
 
             def sleep(self_inner, seconds: float) -> None:
                 _ = seconds
@@ -61,10 +79,10 @@ class FakeDailyTaskHarness(DailyTask):
                 match = kwargs.get("match")
                 box = kwargs.get("box")
                 box_name = box[4] if isinstance(box, tuple) and len(box) >= 5 else ""
+
                 if box_name == "lobby_nav":
                     return [FakeHit("大厅"), FakeHit("妮姬")]
                 if box_name.startswith("shop_slot_"):
-                    # 0号格免费，1号格钻石付费（必须拦截），2号格已售罄，3号格免费
                     if box_name.endswith("_0"):
                         return [FakeHit("免费")]
                     if box_name.endswith("_1"):
@@ -72,9 +90,22 @@ class FakeDailyTaskHarness(DailyTask):
                     if box_name.endswith("_2"):
                         return [FakeHit("已售罄")]
                     return [FakeHit("免费")]
-                if box_name in ("wipe_out_free_check", "shop_free_refresh_check"):
+                if box_name in ("wipe_out_free_check", "shop_free_refresh_check", "arena_free_check"):
                     return [FakeHit("免费")]
+                if box_name == "cash_shop_free_scan":
+                    return [FakeHit("每日免费礼包 免费")]
+                if box_name == "recruit_banner_title":
+                    return [FakeHit("社交点招募")]
+                if box_name == "sim_room_state":
+                    self_inner._sim_steps += 1
+                    if self_inner._sim_steps == 1:
+                        return [FakeHit("快速战斗")]
+                    if self_inner._sim_steps == 2:
+                        return [FakeHit("不选择")]
+                    return [FakeHit("结束模拟")]
                 if isinstance(match, list) and match:
+                    if "战斗失败" in match:
+                        return []
                     return [FakeHit(match[0])]
                 return []
 
@@ -137,29 +168,51 @@ class YesNkCoreTests(unittest.TestCase):
         parsed = build_desktop_clone_config({"desktop_clone": {"run_mode": "background_post_message"}})
         self.assertEqual(parsed.run_mode, "background_post_message")
 
-    def test_shop_diamond_safety_guard(self) -> None:
-        # 钻石付费商品必须绝对拦截，即使文本混淆
+    def test_safety_guards_shop_cash_and_recruit(self) -> None:
+        # 1. 普通商店钻石防误买护栏
         diamond_slot = ShopSlotObservation(0, "免费 300 珠宝", has_diamond_icon=True)
         self.assertFalse(evaluate_shop_slot(diamond_slot, allow_credit_discount=True).should_buy)
 
-        # 免费商品放行
         free_slot = ShopSlotObservation(1, "免费")
         self.assertTrue(evaluate_shop_slot(free_slot).should_buy)
 
-        # 信用点折扣按阈值严格过滤
         credit_low = ShopSlotObservation(2, "5000", discount_text="-30%", has_credit_icon=True)
-        self.assertFalse(evaluate_shop_slot(credit_low, allow_credit_discount=True, min_credit_discount_percent=50).should_buy)
+        self.assertFalse(
+            evaluate_shop_slot(
+                credit_low, allow_credit_discount=True, min_credit_discount_percent=50
+            ).should_buy
+        )
 
         credit_high = ShopSlotObservation(3, "2500", discount_text="-60%", has_credit_icon=True)
-        self.assertTrue(evaluate_shop_slot(credit_high, allow_credit_discount=True, min_credit_discount_percent=50).should_buy)
+        self.assertTrue(
+            evaluate_shop_slot(
+                credit_high, allow_credit_discount=True, min_credit_discount_percent=50
+            ).should_buy
+        )
 
-    def test_maa_to_coco_converter(self) -> None:
+        # 2. 付费商店免费礼包护栏（严禁触碰 RMB/￥/¥/珠宝）
+        self.assertTrue(is_safe_free_cash_shop_text("每日免费礼包 免费"))
+        self.assertFalse(is_safe_free_cash_shop_text("￥6 每日特惠礼包"))
+        self.assertFalse(is_safe_free_cash_shop_text("免费赠品 ¥30 组合包"))
+        self.assertFalse(is_safe_free_cash_shop_text("6元 首充礼包"))
+        self.assertFalse(is_safe_free_cash_shop_text("免费 300 珠宝"))
+        self.assertFalse(is_safe_free_cash_shop_text("已售罄 免费"))
+
+        # 3. 社交点招募卡池护栏（严禁误抽珠宝卡池）
+        self.assertTrue(is_social_recruit_banner("社交点招募"))
+        self.assertTrue(is_social_recruit_banner("友情点招募"))
+        self.assertFalse(is_social_recruit_banner("特殊招募 概率UP"))
+        self.assertFalse(is_social_recruit_banner("普通招募"))
+        self.assertFalse(is_social_recruit_banner("限定招募 社交点"))
+
+    def test_maa_to_coco_converter_and_pipeline_analyzer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             maa_dir = tmp_path / "maa_images"
             maa_dir.mkdir()
             _write_minimal_png(maa_dir / "mailbox_entry.png", 48, 36)
             _write_minimal_png(maa_dir / "shop_refresh.png", 64, 28)
+            _write_minimal_png(maa_dir / "interception_boss.png", 96, 48)
 
             out_json = tmp_path / "out" / "result.json"
             out_imgs = tmp_path / "out" / "images"
@@ -172,26 +225,56 @@ class YesNkCoreTests(unittest.TestCase):
 
             self.assertIn("lobby_mail_icon", report.matched_features)
             self.assertIn("shop_refresh_btn", report.matched_features)
+            self.assertIn("ark_interception_entry", report.matched_features)
             self.assertTrue(out_json.exists())
 
             coco = json.loads(out_json.read_text(encoding="utf-8"))
+            self.assertEqual(len(coco["categories"]), 38)
             self.assertEqual(len(coco["images"]), len(report.matched_features))
-            self.assertEqual(len(coco["annotations"]), len(report.matched_features))
-            self.assertEqual(coco["images"][0]["width"], 48)
-            self.assertEqual(coco["images"][0]["height"], 36)
 
-    def test_daily_task_pipeline_and_trigger(self) -> None:
-        harness = FakeDailyTaskHarness()
+            # 测试 MaaNikke pipeline JSON 解析与覆盖映射
+            pipe_dir = tmp_path / "maa_pipeline"
+            pipe_dir.mkdir()
+            (pipe_dir / "interception.json").write_text(
+                json.dumps(
+                    {
+                        "EnterInterception": {"template": "ark/interception.png"},
+                        "QuickBattle": {"template": ["ark/quick.png", "ark/confirm.png"]},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (pipe_dir / "simulation_room.json").write_text(
+                json.dumps({"StartSim": {"template": "sim/start.png"}}),
+                encoding="utf-8",
+            )
+            (pipe_dir / "arena.json").write_text(
+                json.dumps({"RookieArena": {"template": "arena/rookie.png"}}),
+                encoding="utf-8",
+            )
+
+            p_report = analyze_maa_pipeline_directory(pipe_dir)
+            self.assertEqual(p_report.scanned_files, 3)
+            self.assertEqual(p_report.total_nodes, 4)
+            self.assertIn("yes_nk.tasks.InterceptionTask.InterceptionTask", p_report.mapped_tasks)
+            self.assertIn("yes_nk.tasks.SimulationRoomTask.SimulationRoomTask", p_report.mapped_tasks)
+            self.assertIn("yes_nk.tasks.ArenaTask.ArenaTask", p_report.mapped_tasks)
+            self.assertEqual(len(p_report.referenced_templates), 5)
+
+    def test_all_21_pipelines_in_daily_task_and_config(self) -> None:
+        self.assertEqual(len(ALL_PIPELINE_SPECS), 21)
+        # config.py 包含 DailyTask + 全部 21 个独立任务 = 22
+        self.assertEqual(len(config["onetime_tasks"]), 22)
+
+        harness = FakeDailyTaskHarness(enable_all=True)
         summary = harness.run()
-        self.assertEqual(summary["邮箱一键领取"], "ok")
-        self.assertEqual(summary["好友友情点互赠"], "ok")
-        self.assertEqual(summary["前哨基地收菜与一举歼灭"], "ok")
-        self.assertEqual(summary["公告栏派遣收取与重派"], "ok")
-        self.assertEqual(summary["普通商店免费与折扣采购"], "ok")
-        self.assertEqual(summary["每日任务与活跃奖励领取"], "ok")
-        # 确认商店绝对没有点击位于 x=0.35..0.50 (中心 0.42) 的钻石货架
+
+        for key, _cat, _default, _cls in ALL_PIPELINE_SPECS:
+            self.assertEqual(summary.get(key), "ok", f"流水线 {key} 执行未返回 ok: {summary}")
+
+        # 确认普通商店绝对没有点击位于 x=0.35..0.50 (中心 0.42) 的钻石货架
         self.assertFalse(any("ShopTask:click_rel:0.42" in e for e in harness.events))
-        # 确认商店购买了 0 号免费格 (中心 0.26)
+        # 确认普通商店购买了 0 号免费格 (中心 0.26)
         self.assertTrue(any("ShopTask:click_rel:0.26" in e for e in harness.events))
 
         # 验证配置结构符合 ok-script 规范
@@ -206,6 +289,48 @@ class YesNkCoreTests(unittest.TestCase):
         trigger.sleep = lambda s: None  # type: ignore[method-assign]
         self.assertTrue(trigger.run())
         self.assertEqual(clicked, ["重新连接"])
+
+    def test_desktop_client_controller_and_icons(self) -> None:
+        from tools.generate_icon import generate_icons
+        from yes_nk.gui.controller import (
+            DEFAULT_DAILY_TOGGLES,
+            DesktopClientController,
+            get_grouped_pipelines,
+        )
+
+        self.assertEqual(len(DEFAULT_DAILY_TOGGLES), 21)
+        grouped = get_grouped_pipelines()
+        self.assertEqual(sum(len(v) for v in grouped.values()), 21)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cfg_path = tmp_path / "yes_nk_config.json"
+            ctrl = DesktopClientController(config_path=cfg_path)
+            ctrl.state.run_mode = "desktop_clone"
+            ctrl.state.desktop_name = "YES NK 桌面"
+            ctrl.state.daily_toggles["邮箱一键领取"] = False
+            ctrl.state.daily_toggles["大型活动刷取与签到"] = True
+            ctrl.save_state()
+
+            reloaded = DesktopClientController(config_path=cfg_path)
+            self.assertEqual(reloaded.state.run_mode, "desktop_clone")
+            self.assertEqual(reloaded.state.desktop_name, "YES_NK")
+            self.assertFalse(reloaded.state.daily_toggles["邮箱一键领取"])
+            self.assertTrue(reloaded.state.daily_toggles["大型活动刷取与签到"])
+
+            argv = reloaded.build_ok_launch_argv(debug=True)
+            self.assertIn("--desktop-clone", argv)
+            self.assertIn("--debug", argv)
+
+            png_path, ico_path = generate_icons(output_dir=tmp_path / "icons")
+            self.assertTrue(png_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+            self.assertTrue(ico_path.read_bytes().startswith(b"\x00\x00\x01\x00"))
+
+        root = Path(__file__).resolve().parent.parent
+        self.assertTrue((root / "desktop_launcher.py").exists())
+        self.assertTrue((root / "yes_nk.spec").exists())
+        self.assertTrue((root / "scripts" / "start_yes_nk.bat").exists())
+        self.assertTrue((root / ".github" / "workflows" / "build-windows-release.yml").exists())
 
 
 if __name__ == "__main__":

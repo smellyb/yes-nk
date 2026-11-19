@@ -1,7 +1,9 @@
-"""《胜利女神：新的希望》国服 16:9 归一化 ROI 区域与场景状态模型。
+"""《胜利女神：新的希望》国服全量 16:9 归一化 ROI 区域与场景状态模型。
 
-所有坐标均以 1920x1080 (16:9) 客户区为基准归一化到 [0.0, 1.0]，
-配合 ok-script 的 box_of_screen(x1, y1, x2, y2) 可在 1920x1080 / 1600x900 / 1280x720 自动等比缩放。
+覆盖 MaaNikke 全部 20+ 条流水线涉及的界面区域（大厅、邮箱、好友、前哨基地、公告栏、
+普通/付费商店、招募、咨询、装备、更生馆、方舟、拦截战、模拟室、竞技场、无限之塔、
+协同作战、单人突击、联盟突袭、大型活动与通行证 PASS）。
+所有坐标以 1920x1080 (16:9) 客户区为基准归一化到 [0.0, 1.0]。
 """
 
 from __future__ import annotations
@@ -14,25 +16,35 @@ NormalizedBox = Tuple[float, float, float, float]
 
 @dataclass(frozen=True)
 class NikkeROI:
-    # 大厅底部导航栏（用于稳定判定是否在大厅，不受动态立绘干扰）
+    # --- 大厅与通用导航 ---
     LOBBY_BOTTOM_NAV: NormalizedBox = (0.24, 0.88, 0.76, 0.99)
-    # 大厅右上角系统图标区（邮箱、公告、菜单、好友）
-    LOBBY_TOP_RIGHT: NormalizedBox = (0.76, 0.01, 0.99, 0.14)
-    # 大厅左侧/左下角前哨基地与防御进度入口
+    LOBBY_TOP_LEFT: NormalizedBox = (0.01, 0.01, 0.30, 0.24)
+    LOBBY_TOP_RIGHT: NormalizedBox = (0.76, 0.01, 0.99, 0.16)
+    LOBBY_LEFT_BANNERS: NormalizedBox = (0.01, 0.18, 0.24, 0.68)
     LOBBY_OUTPOST_ENTRY: NormalizedBox = (0.02, 0.68, 0.28, 0.90)
-    # 大厅右侧快捷入口（商店、方舟、任务）
-    LOBBY_RIGHT_SHORTCUTS: NormalizedBox = (0.72, 0.56, 0.98, 0.88)
-    # 通用弹窗关闭区域与“今日不再显示”复选区
+    LOBBY_RIGHT_SHORTCUTS: NormalizedBox = (0.72, 0.50, 0.98, 0.88)
+    TOP_LEFT_BACK: NormalizedBox = (0.01, 0.01, 0.16, 0.12)
+    FULL_CENTER: NormalizedBox = (0.15, 0.18, 0.85, 0.86)
+
+    # --- 弹窗与战斗通用 ---
     POPUP_TOP_RIGHT_CLOSE: NormalizedBox = (0.72, 0.04, 0.97, 0.24)
     POPUP_CENTER_DIALOG: NormalizedBox = (0.22, 0.24, 0.78, 0.82)
     POPUP_BOTTOM_DISMISS: NormalizedBox = (0.28, 0.78, 0.72, 0.97)
-    # 邮箱与好友底部批量操作栏
+    BATTLE_START_BTN: NormalizedBox = (0.32, 0.74, 0.76, 0.94)
+    BATTLE_RESULT_AREA: NormalizedBox = (0.25, 0.72, 0.75, 0.96)
+
+    # --- 邮箱 / 好友 / 通行证 / 任务 ---
     BOTTOM_ACTION_BAR: NormalizedBox = (0.25, 0.78, 0.85, 0.96)
-    # 前哨基地防御弹窗操作区（领取奖励 / 一举歼灭）
+    MISSION_TABS: NormalizedBox = (0.18, 0.12, 0.82, 0.24)
+    MISSION_CLAIM_ALL: NormalizedBox = (0.55, 0.80, 0.88, 0.95)
+    PASS_REWARD_AREA: NormalizedBox = (0.18, 0.18, 0.84, 0.92)
+
+    # --- 前哨基地与派遣 ---
     OUTPOST_REWARD_ACTIONS: NormalizedBox = (0.26, 0.66, 0.74, 0.86)
-    # 公告栏派遣操作区（全部领取 / 全部派遣）
     DISPATCH_ACTIONS: NormalizedBox = (0.26, 0.76, 0.76, 0.94)
-    # 普通商店 4 格商品货架区域（支持逐格切分，严控价格与货币图标 ROI）
+
+    # --- 商店（普通 / 竞技场 / 付费商店） ---
+    SHOP_SIDE_TABS: NormalizedBox = (0.02, 0.14, 0.20, 0.86)
     SHOP_SHELF_SLOTS: Tuple[NormalizedBox, ...] = (
         (0.18, 0.42, 0.34, 0.78),
         (0.35, 0.42, 0.50, 0.78),
@@ -40,11 +52,35 @@ class NikkeROI:
         (0.67, 0.42, 0.82, 0.78),
     )
     SHOP_REFRESH_BTN: NormalizedBox = (0.70, 0.24, 0.88, 0.36)
-    # 顶部返回大厅 / 返回上一级区域
-    TOP_LEFT_BACK: NormalizedBox = (0.01, 0.01, 0.16, 0.12)
-    # 日常任务与通行证页面
-    MISSION_TABS: NormalizedBox = (0.18, 0.12, 0.82, 0.24)
-    MISSION_CLAIM_ALL: NormalizedBox = (0.55, 0.80, 0.88, 0.95)
+    CASH_SHOP_TOP_TABS: NormalizedBox = (0.14, 0.10, 0.88, 0.24)
+    CASH_SHOP_FREE_GRID: NormalizedBox = (0.16, 0.24, 0.86, 0.82)
+
+    # --- 招募 / 妮姬咨询 / 装备 / 更生馆 ---
+    RECRUIT_BANNER_SWITCH: NormalizedBox = (0.04, 0.40, 0.96, 0.62)
+    RECRUIT_PULL_AREA: NormalizedBox = (0.24, 0.74, 0.78, 0.92)
+    NIKKE_ROSTER_GRID: NormalizedBox = (0.16, 0.22, 0.84, 0.86)
+    ADVISE_DIALOG_CHOICES: NormalizedBox = (0.20, 0.58, 0.80, 0.88)
+    ADVISE_ACTION_BAR: NormalizedBox = (0.24, 0.76, 0.82, 0.94)
+    EQUIP_SLOT_AREA: NormalizedBox = (0.08, 0.34, 0.46, 0.84)
+    EQUIP_UPGRADE_ACTIONS: NormalizedBox = (0.48, 0.68, 0.88, 0.92)
+    LIBERATION_TASKS_AREA: NormalizedBox = (0.18, 0.34, 0.84, 0.86)
+
+    # --- 方舟副本（拦截战 / 模拟室 / 竞技场 / 无限之塔 / 协同 / 单人突击） ---
+    ARK_MODE_GRID: NormalizedBox = (0.12, 0.18, 0.88, 0.86)
+    INTERCEPTION_BOSS_AREA: NormalizedBox = (0.16, 0.24, 0.84, 0.88)
+    SIM_ROOM_DIFFICULTY: NormalizedBox = (0.16, 0.22, 0.84, 0.84)
+    SIM_ROOM_STAGES: NormalizedBox = (0.14, 0.24, 0.86, 0.84)
+    ARENA_MODE_SELECT: NormalizedBox = (0.16, 0.24, 0.84, 0.84)
+    ARENA_OPPONENT_SLOTS: Tuple[NormalizedBox, ...] = (
+        (0.64, 0.32, 0.88, 0.46),
+        (0.64, 0.48, 0.88, 0.62),
+        (0.64, 0.64, 0.88, 0.78),
+    )
+    TOWER_LIST_AREA: NormalizedBox = (0.14, 0.20, 0.86, 0.86)
+
+    # --- 联盟突袭 & 大型活动 ---
+    UNION_MENU_AREA: NormalizedBox = (0.16, 0.22, 0.86, 0.86)
+    EVENT_MAIN_STAGE_AREA: NormalizedBox = (0.14, 0.20, 0.88, 0.88)
 
 
 class NikkeScene:

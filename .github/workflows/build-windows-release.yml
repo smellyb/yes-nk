@@ -1,0 +1,56 @@
+name: Build Windows Desktop Client (YES-NK.exe)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies & PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Generate Windows desktop icons
+        run: python tools/generate_icon.py
+
+      - name: Run Python core unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Build YES-NK.exe with PyInstaller
+        run: pyinstaller yes_nk.spec --noconfirm --clean
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          Copy-Item scripts/start_desktop_clone.bat dist/YES-NK/ -Force
+          Compress-Archive -Path dist/YES-NK/* -DestinationPath YES-NK-win64-portable.zip -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YES-NK-win64-portable
+          path: YES-NK-win64-portable.zip
+
+      - name: Publish GitHub Release on tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: YES-NK-win64-portable.zip
+          generate_release_notes: true

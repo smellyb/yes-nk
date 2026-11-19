@@ -152,6 +152,7 @@ export function buildYesNkExportConfig(
       templateThreshold: settings.templateThreshold,
       autoReturnLobby: settings.autoReturnLobby,
     },
+    daily_toggles: Object.fromEntries(tasks.map((t) => [t.name, t.enabled])),
     onetime_tasks: tasks.map((t, index) => ({
       order: index + 1,
       module: t.pythonModule,

@@ -52,11 +52,123 @@
       "maa_candidates": ["shop", "商店"]
     },
     {
+      "name": "lobby_cash_shop_icon",
+      "scene": "大厅付费商店入口",
+      "roi_norm": [0.01, 0.16, 0.24, 0.56],
+      "ocr_fallback": ["付费商店", "商城"],
+      "maa_candidates": ["cash_shop", "cashshop", "付费商店", "商城"]
+    },
+    {
       "name": "lobby_mission_icon",
       "scene": "大厅任务入口",
       "roi_norm": [0.72, 0.56, 0.98, 0.88],
       "ocr_fallback": ["任务"],
       "maa_candidates": ["mission", "任务"]
+    },
+    {
+      "name": "lobby_pass_banner",
+      "scene": "大厅左侧通行证入口",
+      "roi_norm": [0.01, 0.16, 0.24, 0.56],
+      "ocr_fallback": ["PASS", "通行证", "任务通行证"],
+      "maa_candidates": ["pass", "mission_pass", "通行证"]
+    },
+    {
+      "name": "lobby_recruit_icon",
+      "scene": "大厅招募入口",
+      "roi_norm": [0.24, 0.88, 0.76, 0.99],
+      "ocr_fallback": ["招募", "妮姬招募"],
+      "maa_candidates": ["recruit", "gacha", "招募"]
+    },
+    {
+      "name": "recruit_next_banner_btn",
+      "scene": "招募界面切换卡池箭头",
+      "roi_norm": [0.85, 0.35, 0.99, 0.65],
+      "ocr_fallback": [">"],
+      "maa_candidates": ["recruit_next", "banner_next", "right_arrow"]
+    },
+    {
+      "name": "lobby_nikke_nav",
+      "scene": "大厅底部妮姬导航",
+      "roi_norm": [0.24, 0.88, 0.76, 0.99],
+      "ocr_fallback": ["妮姬"],
+      "maa_candidates": ["nikke_nav", "lobby_nikke", "妮姬"]
+    },
+    {
+      "name": "nikke_advise_entry",
+      "scene": "妮姬界面咨询入口",
+      "roi_norm": [0.02, 0.14, 0.32, 0.30],
+      "ocr_fallback": ["咨询"],
+      "maa_candidates": ["advise", "counsel", "咨询"]
+    },
+    {
+      "name": "equip_slot_head",
+      "scene": "妮姬详情头盔装备槽",
+      "roi_norm": [0.06, 0.26, 0.36, 0.74],
+      "ocr_fallback": ["头盔", "装备"],
+      "maa_candidates": ["equip_head", "equipment", "装备"]
+    },
+    {
+      "name": "lobby_liberation_icon",
+      "scene": "前哨基地更生馆入口",
+      "roi_norm": [0.02, 0.16, 0.34, 0.62],
+      "ocr_fallback": ["更生馆", "解放"],
+      "maa_candidates": ["liberation", "rehab", "更生馆", "解放"]
+    },
+    {
+      "name": "ark_interception_entry",
+      "scene": "方舟拦截战入口",
+      "roi_norm": [0.16, 0.20, 0.86, 0.82],
+      "ocr_fallback": ["拦截战", "异常个体拦截战"],
+      "maa_candidates": ["interception", "拦截战"]
+    },
+    {
+      "name": "ark_sim_room_entry",
+      "scene": "方舟模拟室入口",
+      "roi_norm": [0.16, 0.20, 0.86, 0.82],
+      "ocr_fallback": ["模拟室"],
+      "maa_candidates": ["simulation", "sim_room", "模拟室"]
+    },
+    {
+      "name": "ark_arena_entry",
+      "scene": "方舟竞技场入口",
+      "roi_norm": [0.16, 0.20, 0.86, 0.82],
+      "ocr_fallback": ["竞技场"],
+      "maa_candidates": ["arena", "竞技场"]
+    },
+    {
+      "name": "ark_tribe_tower_entry",
+      "scene": "方舟无限之塔入口",
+      "roi_norm": [0.16, 0.20, 0.86, 0.82],
+      "ocr_fallback": ["无限之塔", "企业塔"],
+      "maa_candidates": ["tribe_tower", "tower", "无限之塔"]
+    },
+    {
+      "name": "lobby_coop_banner",
+      "scene": "协同作战活动横幅",
+      "roi_norm": [0.01, 0.16, 0.24, 0.56],
+      "ocr_fallback": ["协同作战"],
+      "maa_candidates": ["coop", "co_op", "协同作战"]
+    },
+    {
+      "name": "lobby_solo_raid_banner",
+      "scene": "单人突击活动横幅",
+      "roi_norm": [0.01, 0.16, 0.24, 0.56],
+      "ocr_fallback": ["单人突击"],
+      "maa_candidates": ["solo_raid", "soloraid", "单人突击"]
+    },
+    {
+      "name": "lobby_union_icon",
+      "scene": "大厅联盟入口",
+      "roi_norm": [0.72, 0.56, 0.98, 0.88],
+      "ocr_fallback": ["联盟", "联盟突袭"],
+      "maa_candidates": ["union", "union_raid", "联盟"]
+    },
+    {
+      "name": "lobby_event_banner",
+      "scene": "大厅左侧大型活动横幅",
+      "roi_norm": [0.01, 0.16, 0.24, 0.56],
+      "ocr_fallback": ["活动", "剧情活动"],
+      "maa_candidates": ["event", "story_event", "活动"]
     },
     {
       "name": "popup_close_x",

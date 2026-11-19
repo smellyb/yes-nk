@@ -70,7 +70,10 @@ def main(argv: list[str] | None = None) -> int:
         if not manager.ensure_desktop():
             print("[YES-NK] 创建桌面分身失败，请尝试以管理员身份运行或改用后台消息模式。")
             return 1
-        cmd = f'"{sys.executable}" "{Path(__file__).resolve()}" --in-clone'
+        if getattr(sys, "frozen", False):
+            cmd = f'"{sys.executable}" --ok-core --in-clone'
+        else:
+            cmd = f'"{sys.executable}" "{Path(__file__).resolve()}" --in-clone'
         if args.debug:
             cmd += " --debug"
         pid = manager.launch_in_clone(cmd)

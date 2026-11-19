@@ -14,13 +14,16 @@ from yes_nk.utils.shop_guard import ShopSlotObservation, evaluate_shop_slot
 class ShopTask(BaseNikkeTask):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.name = "普通商店免费与折扣采购"
-        self.description = "购买普通商店每日免费商品，支持免费刷新后再扫货一次，内置钻石防误买护栏。"
+        self.name = "道具商店每日采购"
+        self.description = (
+            "购买普通商店每日免费商品（支持免费刷新后二次扫货）及可选竞技场商店技能书，内置钻石防误买护栏。"
+        )
         self.default_config.update(
             {
                 "使用每日免费刷新": True,
                 "购买高折扣信用点商品": False,
                 "信用点最低折扣(%)": 50,
+                "购买竞技场商店技能书": False,
             }
         )
         for k, v in self.default_config.items():
@@ -75,8 +78,43 @@ class ShopTask(BaseNikkeTask):
 
         return bought
 
+    def _scan_arena_shop(self) -> int:
+        """可选：切换至竞技场商店，使用竞技场兑换券购买技能手册（绝不点击钻石商品）。"""
+        switched = self.click_ocr(
+            ["竞技场商店", "竞技场"],
+            NikkeROI.CASH_SHOP_LEFT_TABS,
+            wait_after=1.0,
+            name="arena_shop_tab",
+        )
+        if not switched:
+            self.log_info("未检测到竞技场商店页签，跳过竞技场商店采购")
+            return 0
+
+        bought = 0
+        for idx, slot_box in enumerate(NikkeROI.SHOP_SHELF_SLOTS):
+            ocr_hits = self.ocr_in_roi(slot_box, name=f"arena_shop_slot_{idx}")
+            joined = " ".join(getattr(item, "name", str(item)) for item in ocr_hits)
+            has_diamond = (
+                self.find_feature_in_roi("shop_diamond_icon", box=slot_box) is not None
+            )
+            if has_diamond or any(k in joined for k in ("珠宝", "钻石", "已售罄", "售罄")):
+                continue
+            if any(k in joined for k in ("技能", "爆裂", "手册", "元素")):
+                x1, y1, x2, y2 = slot_box
+                self.click_relative((x1 + x2) / 2, (y1 + y2) / 2)
+                self._wait_step(0.8)
+                if self.click_ocr(
+                    ["购买", "确认"],
+                    NikkeROI.POPUP_CENTER_DIALOG,
+                    wait_after=0.9,
+                    name="arena_shop_buy_confirm",
+                ):
+                    bought += 1
+                    self.handle_common_popups()
+        return bought
+
     def run(self) -> bool:
-        self.log_info("开始执行：普通商店免费与折扣采购")
+        self.log_info("开始执行：道具商店每日采购")
         if not self.ensure_in_lobby():
             self.log_error("无法回到大厅，跳过商店采购")
             return False
@@ -120,6 +158,9 @@ class ShopTask(BaseNikkeTask):
                     self.log_info("今日免费刷新已用完，跳过付费刷新")
                     self.handle_common_popups()
 
-        self.log_info(f"普通商店采购结束，本次共购入 {total_bought} 项商品")
+        if self.config.get("购买竞技场商店技能书", False):
+            total_bought += self._scan_arena_shop()
+
+        self.log_info(f"道具商店采购结束，本次共购入 {total_bought} 项商品")
         self.back_to_lobby()
         return True

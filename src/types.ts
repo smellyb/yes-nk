@@ -43,7 +43,7 @@ export interface AutomationTask {
   className: string;
   pythonModule: string;
   name: string;
-  category: '基础日常' | '基地与养成' | '商店与结算';
+  category: '启动与奖励' | '商店相关' | '日常养成' | '副本挑战' | '联盟与活动';
   summary: string;
   enabled: boolean;
   estimatedSec: number;
