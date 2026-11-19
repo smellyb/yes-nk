@@ -1,0 +1,212 @@
+"""YES-NK Python 自动化核心单测（无游戏窗口环境下全链路验证）。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+from pathlib import Path
+import struct
+import tempfile
+import unittest
+import zlib
+
+from tools.convert_maa_assets import convert_maa_directory_to_coco
+from yes_nk.config import config, build_desktop_clone_config
+from yes_nk.tasks.DailyTask import DailyTask
+from yes_nk.tasks.PopupGuardTrigger import PopupGuardTrigger
+from yes_nk.utils.desktop_clone import (
+    DesktopCloneConfig,
+    WindowsDesktopCloneManager,
+    resolve_ok_interaction_class,
+)
+from yes_nk.utils.shop_guard import ShopSlotObservation, evaluate_shop_slot
+from yes_nk.utils.window_1080p import evaluate_client_geometry
+
+
+@dataclass
+class FakeHit:
+    name: str
+
+
+def _write_minimal_png(path: Path, width: int = 32, height: int = 24) -> None:
+    """写入合法的最小 1-bit PNG 文件供转换器单测使用。"""
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    raw = b"".join(b"\x00" + b"\x00\x00\x00" * width for _ in range(height))
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+    path.write_bytes(png)
+
+
+class FakeDailyTaskHarness(DailyTask):
+    """覆盖底层截屏/点击 IO，验证基础日常一条龙状态机完整串联执行。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.events: list[str] = []
+
+    def _build_subtask(self, task_cls):
+        parent = self
+
+        class InstrumentedSubtask(task_cls):
+            def __init__(self_inner) -> None:
+                super().__init__()
+                self_inner._lobby_calls = 0
+
+            def sleep(self_inner, seconds: float) -> None:
+                _ = seconds
+
+            def ocr(self_inner, *args, **kwargs):
+                match = kwargs.get("match")
+                box = kwargs.get("box")
+                box_name = box[4] if isinstance(box, tuple) and len(box) >= 5 else ""
+                if box_name == "lobby_nav":
+                    return [FakeHit("大厅"), FakeHit("妮姬")]
+                if box_name.startswith("shop_slot_"):
+                    # 0号格免费，1号格钻石付费（必须拦截），2号格已售罄，3号格免费
+                    if box_name.endswith("_0"):
+                        return [FakeHit("免费")]
+                    if box_name.endswith("_1"):
+                        return [FakeHit("300 珠宝")]
+                    if box_name.endswith("_2"):
+                        return [FakeHit("已售罄")]
+                    return [FakeHit("免费")]
+                if box_name in ("wipe_out_free_check", "shop_free_refresh_check"):
+                    return [FakeHit("免费")]
+                if isinstance(match, list) and match:
+                    return [FakeHit(match[0])]
+                return []
+
+            def find_one(self_inner, feature_name: str, *args, **kwargs):
+                if feature_name == "shop_diamond_icon":
+                    box = kwargs.get("box")
+                    if isinstance(box, tuple) and box[0] == 0.35:
+                        return FakeHit("shop_diamond_icon")
+                    return None
+                if feature_name in ("popup_dont_show_today", "popup_close_x"):
+                    return None
+                return FakeHit(feature_name)
+
+            def click_box(self_inner, box, *args, **kwargs):
+                parent.events.append(f"{task_cls.__name__}:click:{getattr(box, 'name', box)}")
+
+            def click_relative(self_inner, x: float, y: float, *args, **kwargs):
+                parent.events.append(f"{task_cls.__name__}:click_rel:{x:.2f},{y:.2f}")
+
+        return InstrumentedSubtask()
+
+    def sleep(self, seconds: float) -> None:
+        _ = seconds
+
+    def ocr(self, *args, **kwargs):
+        return [FakeHit("大厅"), FakeHit("妮姬")]
+
+
+class YesNkCoreTests(unittest.TestCase):
+    def test_1080p_geometry_validation(self) -> None:
+        optimal = evaluate_client_geometry(1920, 1080, dpi_scale_percent=100)
+        self.assertTrue(optimal.is_valid)
+        self.assertEqual(optimal.status, "optimal_1080p")
+        self.assertEqual(optimal.scale_x, 1.0)
+
+        scaled_900p = evaluate_client_geometry(1600, 900, dpi_scale_percent=125)
+        self.assertTrue(scaled_900p.is_valid)
+        self.assertEqual(scaled_900p.status, "valid_scaled_16_9")
+        self.assertIn("125%", scaled_900p.recommendation)
+
+        squished = evaluate_client_geometry(1920, 1009, dpi_scale_percent=100)
+        self.assertFalse(squished.is_valid)
+        self.assertEqual(squished.status, "non_16_9")
+
+        too_small = evaluate_client_geometry(960, 540)
+        self.assertFalse(too_small.is_valid)
+        self.assertEqual(too_small.status, "too_small")
+
+    def test_desktop_clone_config_and_interactions(self) -> None:
+        dc = DesktopCloneConfig(desktop_name="YES NK 桌面#1")
+        self.assertEqual(dc.sanitized_desktop_name(), "YES_NK____1")
+
+        mgr = WindowsDesktopCloneManager(dc)
+        self.assertEqual(mgr.build_process_desktop_attr(), "WinSta0\\YES_NK____1")
+
+        self.assertEqual(resolve_ok_interaction_class("desktop_clone"), "ForegroundPostMessage")
+        self.assertEqual(resolve_ok_interaction_class("background_post_message"), "PostMessage")
+        self.assertEqual(resolve_ok_interaction_class("foreground_compat"), "Pynput")
+
+        parsed = build_desktop_clone_config({"desktop_clone": {"run_mode": "background_post_message"}})
+        self.assertEqual(parsed.run_mode, "background_post_message")
+
+    def test_shop_diamond_safety_guard(self) -> None:
+        # 钻石付费商品必须绝对拦截，即使文本混淆
+        diamond_slot = ShopSlotObservation(0, "免费 300 珠宝", has_diamond_icon=True)
+        self.assertFalse(evaluate_shop_slot(diamond_slot, allow_credit_discount=True).should_buy)
+
+        # 免费商品放行
+        free_slot = ShopSlotObservation(1, "免费")
+        self.assertTrue(evaluate_shop_slot(free_slot).should_buy)
+
+        # 信用点折扣按阈值严格过滤
+        credit_low = ShopSlotObservation(2, "5000", discount_text="-30%", has_credit_icon=True)
+        self.assertFalse(evaluate_shop_slot(credit_low, allow_credit_discount=True, min_credit_discount_percent=50).should_buy)
+
+        credit_high = ShopSlotObservation(3, "2500", discount_text="-60%", has_credit_icon=True)
+        self.assertTrue(evaluate_shop_slot(credit_high, allow_credit_discount=True, min_credit_discount_percent=50).should_buy)
+
+    def test_maa_to_coco_converter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            maa_dir = tmp_path / "maa_images"
+            maa_dir.mkdir()
+            _write_minimal_png(maa_dir / "mailbox_entry.png", 48, 36)
+            _write_minimal_png(maa_dir / "shop_refresh.png", 64, 28)
+
+            out_json = tmp_path / "out" / "result.json"
+            out_imgs = tmp_path / "out" / "images"
+
+            report = convert_maa_directory_to_coco(
+                maa_image_dir=maa_dir,
+                output_json_path=out_json,
+                output_images_dir=out_imgs,
+            )
+
+            self.assertIn("lobby_mail_icon", report.matched_features)
+            self.assertIn("shop_refresh_btn", report.matched_features)
+            self.assertTrue(out_json.exists())
+
+            coco = json.loads(out_json.read_text(encoding="utf-8"))
+            self.assertEqual(len(coco["images"]), len(report.matched_features))
+            self.assertEqual(len(coco["annotations"]), len(report.matched_features))
+            self.assertEqual(coco["images"][0]["width"], 48)
+            self.assertEqual(coco["images"][0]["height"], 36)
+
+    def test_daily_task_pipeline_and_trigger(self) -> None:
+        harness = FakeDailyTaskHarness()
+        summary = harness.run()
+        self.assertEqual(summary["邮箱一键领取"], "ok")
+        self.assertEqual(summary["好友友情点互赠"], "ok")
+        self.assertEqual(summary["前哨基地收菜与一举歼灭"], "ok")
+        self.assertEqual(summary["公告栏派遣收取与重派"], "ok")
+        self.assertEqual(summary["普通商店免费与折扣采购"], "ok")
+        self.assertEqual(summary["每日任务与活跃奖励领取"], "ok")
+        # 确认商店绝对没有点击位于 x=0.35..0.50 (中心 0.42) 的钻石货架
+        self.assertFalse(any("ShopTask:click_rel:0.42" in e for e in harness.events))
+        # 确认商店购买了 0 号免费格 (中心 0.26)
+        self.assertTrue(any("ShopTask:click_rel:0.26" in e for e in harness.events))
+
+        # 验证配置结构符合 ok-script 规范
+        self.assertEqual(config["supported_resolution"]["ratio"], "16:9")
+        self.assertEqual(config["supported_resolution"]["min_size"], (1280, 720))
+
+        # 验证触发守护任务可响应断线重连弹窗
+        trigger = PopupGuardTrigger()
+        clicked: list[str] = []
+        trigger.ocr = lambda *a, **kw: [FakeHit("重新连接")]  # type: ignore[method-assign]
+        trigger.click_box = lambda box, *a, **kw: clicked.append(box.name)  # type: ignore[method-assign]
+        trigger.sleep = lambda s: None  # type: ignore[method-assign]
+        self.assertTrue(trigger.run())
+        self.assertEqual(clicked, ["重新连接"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -8,10 +8,10 @@ import {
   Download,
   FileCode2,
   ListChecks,
+  Monitor,
   Moon,
   Play,
   RotateCcw,
-  Search,
   Settings2,
   SlidersHorizontal,
   Square,
@@ -20,7 +20,10 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react';
+import DesktopClonePanel from './components/DesktopClonePanel';
+import MappingsPanel from './components/MappingsPanel';
 import {
+  INITIAL_DESKTOP_CLONE,
   INITIAL_SETTINGS,
   INITIAL_TASKS,
   INITIAL_TRIGGERS,
@@ -29,12 +32,19 @@ import {
 import {
   AutomationTask,
   ClientSettings,
+  DesktopCloneSettings,
   LogEntry,
   NavSection,
   RecognitionMode,
   TaskStatus,
   TriggerRule,
 } from './types';
+import {
+  buildYesNkExportConfig,
+  evaluateClientGeometry,
+  reorderTasks,
+  resolveInteractionBackend,
+} from './utils/workbenchLogic';
 
 function formatTime(date: Date): string {
   return date.toTimeString().slice(0, 8);
@@ -43,7 +53,13 @@ function formatTime(date: Date): string {
 const MODE_LABELS: Record<RecognitionMode, string> = {
   ocr: 'OCR 文字优先',
   template: '模板特征匹配',
-  hybrid: 'OCR + 模板混合',
+  hybrid: 'COCO + OCR 混合',
+};
+
+const RUN_MODE_SHORT: Record<DesktopCloneSettings['run_mode'], string> = {
+  desktop_clone: '桌面分身 (CreateDesktopW)',
+  background_post_message: '后台消息 (PostMessage)',
+  foreground_compat: '前台兼容 (Pynput)',
 };
 
 export default function App() {
@@ -52,12 +68,9 @@ export default function App() {
   const [tasks, setTasks] = useState<AutomationTask[]>(INITIAL_TASKS);
   const [triggers, setTriggers] = useState<TriggerRule[]>(INITIAL_TRIGGERS);
   const [settings, setSettings] = useState<ClientSettings>(INITIAL_SETTINGS);
+  const [desktopClone, setDesktopClone] = useState<DesktopCloneSettings>(INITIAL_DESKTOP_CLONE);
   const [selectedTaskId, setSelectedTaskId] = useState<string>(INITIAL_TASKS[0].id);
   const [categoryFilter, setCategoryFilter] = useState<string>('全部');
-
-  // Mapping search & filter
-  const [mappingQuery, setMappingQuery] = useState<string>('');
-  const [mappingModeFilter, setMappingModeFilter] = useState<'all' | RecognitionMode>('all');
 
   // Dry-run execution state
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -69,7 +82,8 @@ export default function App() {
       timestamp: formatTime(new Date()),
       level: 'INFO',
       source: 'YES-NK',
-      message: '控制工作台已就绪。当前模式为浏览器流程仿真与配置编排，点击任意任务可预览 ok-script 执行链路。',
+      message:
+        '已对齐国服《胜利女神：新的希望》Python ok-script 架构（基础日常一条龙 + 桌面分身 + 1080P 适配）。',
     },
   ]);
   const [logFilter, setLogFilter] = useState<'ALL' | LogEntry['level']>('ALL');
@@ -78,12 +92,7 @@ export default function App() {
   const timersRef = useRef<number[]>([]);
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (darkMode) {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
+    document.documentElement.classList.toggle('dark', darkMode);
   }, [darkMode]);
 
   useEffect(() => {
@@ -108,24 +117,20 @@ export default function App() {
     return tasks.filter((t) => t.category === categoryFilter);
   }, [tasks, categoryFilter]);
 
-  const filteredMappings = useMemo(() => {
-    const q = mappingQuery.trim().toLowerCase();
-    return RECOGNITION_MAPPINGS.filter((item) => {
-      const matchesMode = mappingModeFilter === 'all' || item.mode === mappingModeFilter;
-      const matchesQuery =
-        !q ||
-        item.scene.toLowerCase().includes(q) ||
-        item.maaNode.toLowerCase().includes(q) ||
-        item.okMethod.toLowerCase().includes(q) ||
-        item.targetTextOrAsset.toLowerCase().includes(q);
-      return matchesMode && matchesQuery;
-    });
-  }, [mappingQuery, mappingModeFilter]);
-
   const filteredLogs = useMemo(() => {
     if (logFilter === 'ALL') return logs;
     return logs.filter((entry) => entry.level === logFilter);
   }, [logs, logFilter]);
+
+  const geometryVerdict = useMemo(
+    () =>
+      evaluateClientGeometry(
+        desktopClone.clientWidth,
+        desktopClone.clientHeight,
+        desktopClone.dpiScalePercent
+      ),
+    [desktopClone.clientWidth, desktopClone.clientHeight, desktopClone.dpiScalePercent]
+  );
 
   const appendLog = (level: LogEntry['level'], source: string, message: string) => {
     setLogs((prev) => [
@@ -144,7 +149,7 @@ export default function App() {
     timersRef.current.forEach((id) => window.clearTimeout(id));
     timersRef.current = [];
     if (isRunning) {
-      appendLog('WARN', 'Scheduler', '用户手动终止任务队列，已安全释放状态机。');
+      appendLog('WARN', 'DailyTask', '已手动终止仿真队列并安全归位状态机。');
     }
     setIsRunning(false);
     setRunningTaskId(null);
@@ -152,7 +157,7 @@ export default function App() {
 
   const runTaskQueue = (queue: AutomationTask[]) => {
     if (queue.length === 0) {
-      appendLog('WARN', 'Scheduler', '没有已启用的任务，请至少勾选 1 个日常任务后再运行。');
+      appendLog('WARN', 'DailyTask', '未启用任何子任务，请至少勾选 1 项日常任务。');
       return;
     }
 
@@ -163,18 +168,18 @@ export default function App() {
     appendLog(
       'INFO',
       'ok.OK',
-      `启动仿真队列：共 ${queue.length} 项任务 · 目标窗口 ${settings.windowTitle} (${settings.resolution}) · 引擎 ${settings.ocrEngine}`
+      `启动基础日常一条龙：共 ${queue.length} 项 · 模式 ${RUN_MODE_SHORT[desktopClone.run_mode]} · 客户区 ${desktopClone.clientWidth}×${desktopClone.clientHeight}`
     );
 
-    let delay = 350;
+    let delay = 300;
     queue.forEach((task) => {
       const startTimer = window.setTimeout(() => {
         setRunningTaskId(task.id);
         setTaskStatuses((prev) => ({ ...prev, [task.id]: 'running' }));
-        appendLog('INFO', task.className, `开始执行：${task.name} (参考节点 ${task.maaRefNode})`);
+        appendLog('INFO', task.className, `开始执行：${task.name} (${task.pythonModule})`);
       }, delay);
       timersRef.current.push(startTimer);
-      delay += 450;
+      delay += 380;
 
       task.steps.forEach((step, idx) => {
         const stepTimer = window.setTimeout(() => {
@@ -182,7 +187,7 @@ export default function App() {
           appendLog(level, task.className, step);
         }, delay);
         timersRef.current.push(stepTimer);
-        delay += 420;
+        delay += 360;
       });
 
       const doneTimer = window.setTimeout(() => {
@@ -190,14 +195,14 @@ export default function App() {
         appendLog('INFO', task.className, `完成：${task.name}`);
       }, delay);
       timersRef.current.push(doneTimer);
-      delay += 300;
+      delay += 260;
     });
 
     const finishTimer = window.setTimeout(() => {
       setIsRunning(false);
       setRunningTaskId(null);
-      appendLog('INFO', 'Scheduler', '队列执行完毕，所有已启用任务均已通过状态机校验。');
-    }, delay + 150);
+      appendLog('INFO', 'DailyTask', '基础日常一条龙全部执行完毕，已返回大厅。');
+    }, delay + 120);
     timersRef.current.push(finishTimer);
   };
 
@@ -208,15 +213,7 @@ export default function App() {
   };
 
   const moveTask = (taskId: string, direction: -1 | 1) => {
-    setTasks((prev) => {
-      const index = prev.findIndex((t) => t.id === taskId);
-      const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || nextIndex >= prev.length) return prev;
-      const copy = [...prev];
-      const [moved] = copy.splice(index, 1);
-      copy.splice(nextIndex, 0, moved);
-      return copy;
-    });
+    setTasks((prev) => reorderTasks(prev, taskId, direction));
   };
 
   const updateTaskOption = (
@@ -252,26 +249,15 @@ export default function App() {
     );
   };
 
-  const exportedConfigJson = useMemo(() => {
-    const payload = {
-      project: 'YES-NK',
-      framework: 'ok-script',
-      client: settings,
-      onetime_tasks: tasks.map((t, index) => ({
-        order: index + 1,
-        class: t.className,
-        enabled: t.enabled,
-        recognition: t.recognitionMode,
-        config: Object.fromEntries(t.options.map((o) => [o.key, o.value])),
-      })),
-      trigger_tasks: triggers.map((tr) => ({
-        class: tr.className,
-        enabled: tr.enabled,
-        interval_ms: tr.intervalMs,
-      })),
-    };
-    return JSON.stringify(payload, null, 2);
-  }, [settings, tasks, triggers]);
+  const exportedConfigJson = useMemo(
+    () =>
+      JSON.stringify(
+        buildYesNkExportConfig(settings, desktopClone, tasks, triggers),
+        null,
+        2
+      ),
+    [settings, desktopClone, tasks, triggers]
+  );
 
   const handleCopyConfig = async () => {
     try {
@@ -279,7 +265,7 @@ export default function App() {
       setCopiedConfig(true);
       window.setTimeout(() => setCopiedConfig(false), 1800);
     } catch {
-      appendLog('WARN', 'Export', '剪贴板写入受限，请改用“下载配置文件”按钮导出 JSON。');
+      appendLog('WARN', 'Export', '剪贴板写入受限，请改用“下载配置”保存 yes_nk_config.json。');
     }
   };
 
@@ -291,11 +277,12 @@ export default function App() {
     link.download = 'yes_nk_config.json';
     link.click();
     URL.revokeObjectURL(url);
-    appendLog('INFO', 'Export', '已导出配置文件 yes_nk_config.json。');
+    appendLog('INFO', 'Export', '已下载 yes_nk_config.json（放置仓库根目录即可被 yes_nk/config.py 自动加载）。');
   };
 
   const navItems: { id: NavSection; label: string; icon: typeof ListChecks; count?: number }[] = [
-    { id: 'tasks', label: '日常任务', icon: ListChecks, count: enabledTasks.length },
+    { id: 'tasks', label: '日常一条龙', icon: ListChecks, count: enabledTasks.length },
+    { id: 'desktop', label: '桌面分身与 1080P', icon: Monitor },
     {
       id: 'triggers',
       label: '触发守护',
@@ -304,7 +291,7 @@ export default function App() {
     },
     {
       id: 'mappings',
-      label: '识别与素材映射',
+      label: 'COCO 与素材映射',
       icon: FileCode2,
       count: RECOGNITION_MAPPINGS.length,
     },
@@ -313,14 +300,15 @@ export default function App() {
   ];
 
   const sectionBreadcrumbs: Record<NavSection, string> = {
-    tasks: 'YES-NK / 日常任务编排',
+    tasks: 'YES-NK / 国服基础日常一条龙',
+    desktop: 'YES-NK / 仿 YES-BD2 桌面分身与 1080P 适配',
     triggers: 'YES-NK / 后台触发守护',
-    mappings: 'YES-NK / MaaNikke 识别重构映射',
+    mappings: 'YES-NK / COCO 特征与 MaaNikke 素材转换',
     logs: 'YES-NK / 状态机运行日志',
     settings: 'YES-NK / 客户端参数与配置导出',
   };
 
-  const categories = ['全部', '基础日常', '基地与养成', '日常副本', '活动与登录'];
+  const categories = ['全部', '基础日常', '基地与养成', '商店与结算'];
 
   return (
     <div className="min-h-screen flex bg-[#F3F4F6] text-slate-900 dark:bg-[#141619] dark:text-slate-100">
@@ -365,30 +353,37 @@ export default function App() {
         </nav>
 
         <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-2 text-xs text-slate-500 dark:text-slate-400">
-          <div className="flex items-center justify-between">
-            <span>目标客户端</span>
-            <span className="font-mono text-slate-700 dark:text-slate-200 truncate max-w-[120px]">
-              {settings.windowTitle}
+          <div className="flex items-center justify-between gap-2">
+            <span>目标进程</span>
+            <span className="font-mono text-slate-700 dark:text-slate-200 truncate">
+              {settings.exeName}
             </span>
           </div>
-          <div className="flex items-center justify-between">
-            <span>分辨率基准</span>
-            <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200">
-              {settings.resolution}
+          <div className="flex items-center justify-between gap-2">
+            <span>运行隔离</span>
+            <span className="text-slate-700 dark:text-slate-200 truncate">
+              {desktopClone.run_mode === 'desktop_clone'
+                ? '桌面分身'
+                : desktopClone.run_mode === 'background_post_message'
+                ? '后台消息'
+                : '前台兼容'}
             </span>
           </div>
-          <div className="flex items-center justify-between">
-            <span>预计耗时</span>
-            <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200">
-              {Math.ceil(totalEstimatedSec / 60)} 分 {totalEstimatedSec % 60} 秒
+          <div className="flex items-center justify-between gap-2">
+            <span>客户区校验</span>
+            <span
+              className={`font-mono tabular-nums ${
+                geometryVerdict.isValid ? 'text-[#16A34A]' : 'text-[#D97706]'
+              }`}
+            >
+              {desktopClone.clientWidth}×{desktopClone.clientHeight}
             </span>
           </div>
         </div>
       </aside>
 
-      {/* Main Content Shell */}
+      {/* Main Shell */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Top Bar Contract: Breadcrumb on Left, Primary Actions on Right */}
         <header className="h-14 px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1C1F24] flex items-center justify-between gap-6">
           <div className="flex items-center gap-3 min-w-0">
             <h1 className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
@@ -396,7 +391,7 @@ export default function App() {
             </h1>
             {isRunning && (
               <span className="text-xs text-[#0067C0] dark:text-[#4CC2FF] whitespace-nowrap shrink-0">
-                正在仿真执行队列
+                状态机仿真运行中
               </span>
             )}
           </div>
@@ -418,7 +413,7 @@ export default function App() {
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium bg-[#DC2626] hover:bg-[#B91C1C] text-white transition-colors whitespace-nowrap shrink-0"
               >
                 <Square className="w-3.5 h-3.5" />
-                停止运行
+                停止仿真
               </button>
             ) : (
               <button
@@ -427,38 +422,41 @@ export default function App() {
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium bg-[#0067C0] hover:bg-[#005A9E] dark:bg-[#4CC2FF] dark:hover:bg-[#3BB2F0] text-white dark:text-slate-950 transition-colors whitespace-nowrap shrink-0"
               >
                 <Play className="w-3.5 h-3.5" />
-                仿真运行已选任务 ({enabledTasks.length})
+                仿真运行一条龙 ({enabledTasks.length})
               </button>
             )}
           </div>
         </header>
 
-        {/* Main Viewport */}
         <main className="flex-1 p-6 overflow-y-auto">
           {activeNav === 'tasks' && (
             <div className="max-w-6xl mx-auto space-y-6">
-              {/* Summary Strip (Unboxed clean metrics) */}
+              {/* Clean Unboxed KPI Summary */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pb-5 border-b border-slate-200 dark:border-slate-800">
                 <div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">已启用日常任务</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">已启用日常子项</div>
                   <div className="mt-1 text-2xl font-semibold font-mono tabular-nums text-slate-900 dark:text-white">
                     {enabledTasks.length} / {tasks.length}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">后台触发守护</div>
-                  <div className="mt-1 text-2xl font-semibold font-mono tabular-nums text-slate-900 dark:text-white">
-                    {triggers.filter((t) => t.enabled).length} 项生效
+                  <div className="text-xs text-slate-500 dark:text-slate-400">运行模式与交互</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                    {RUN_MODE_SHORT[desktopClone.run_mode]}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">默认识别策略</div>
-                  <div className="mt-1 text-base font-semibold text-slate-900 dark:text-white">
-                    {settings.ocrEngine}
+                  <div className="text-xs text-slate-500 dark:text-slate-400">1080P 客户区状态</div>
+                  <div
+                    className={`mt-1 text-sm font-semibold ${
+                      geometryVerdict.isValid ? 'text-[#16A34A]' : 'text-[#D97706]'
+                    }`}
+                  >
+                    {geometryVerdict.label}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">单轮预估耗时</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">一条龙预估耗时</div>
                   <div className="mt-1 text-2xl font-semibold font-mono tabular-nums text-slate-900 dark:text-white">
                     {totalEstimatedSec}s
                   </div>
@@ -487,9 +485,7 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      setTasks((prev) => prev.map((t) => ({ ...t, enabled: true })))
-                    }
+                    onClick={() => setTasks((prev) => prev.map((t) => ({ ...t, enabled: true })))}
                     className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1C1F24] hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
                   >
                     全部启用
@@ -505,9 +501,12 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Split View: YES-BD2 Style Task List + Inspector */}
+              {/* Split View: Task List + Detail Inspector */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                <section className="lg:col-span-7 bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-200 dark:divide-slate-800">
+                <section
+                  aria-label="基础日常任务列表"
+                  className="lg:col-span-7 bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden divide-y divide-slate-200 dark:divide-slate-800"
+                >
                   {filteredTasks.map((task) => {
                     const status = taskStatuses[task.id] ?? 'idle';
                     const isSelected = task.id === selectedTask.id;
@@ -516,23 +515,19 @@ export default function App() {
                     return (
                       <div
                         key={task.id}
-                        onClick={() => setSelectedTaskId(task.id)}
-                        className={`p-4 flex items-center justify-between gap-4 cursor-pointer transition-colors ${
+                        className={`p-4 flex items-center justify-between gap-4 transition-colors ${
                           isSelected
                             ? 'bg-slate-50 dark:bg-[#23272F]'
                             : 'hover:bg-slate-50/70 dark:hover:bg-[#20242B]'
                         }`}
                       >
-                        <div className="flex items-start gap-3.5 min-w-0">
+                        <div className="flex items-start gap-3.5 min-w-0 flex-1">
                           <button
                             type="button"
                             role="switch"
                             aria-checked={task.enabled}
                             aria-label={`启用或停用 ${task.name}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleTaskEnabled(task.id);
-                            }}
+                            onClick={() => toggleTaskEnabled(task.id)}
                             className={`mt-0.5 w-10 h-5 rounded-full transition-colors shrink-0 relative ${
                               task.enabled
                                 ? 'bg-[#0067C0] dark:bg-[#4CC2FF]'
@@ -546,7 +541,11 @@ export default function App() {
                             />
                           </button>
 
-                          <div className="min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTaskId(task.id)}
+                            className="text-left min-w-0 flex-1"
+                          >
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-semibold text-slate-900 dark:text-white truncate">
                                 {task.name}
@@ -571,16 +570,13 @@ export default function App() {
                               <span aria-hidden="true">·</span>
                               <span className="font-mono tabular-nums">{task.estimatedSec}s</span>
                             </div>
-                          </div>
+                          </button>
                         </div>
 
-                        <div
-                          className="flex items-center gap-1 shrink-0"
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                        <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
-                            aria-label="上移任务"
+                            aria-label={`上移 ${task.name}`}
                             disabled={globalIndex === 0}
                             onClick={() => moveTask(task.id, -1)}
                             className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors"
@@ -589,7 +585,7 @@ export default function App() {
                           </button>
                           <button
                             type="button"
-                            aria-label="下移任务"
+                            aria-label={`下移 ${task.name}`}
                             disabled={globalIndex === tasks.length - 1}
                             onClick={() => moveTask(task.id, 1)}
                             className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/70 dark:hover:bg-slate-700 disabled:opacity-30 transition-colors"
@@ -599,6 +595,7 @@ export default function App() {
                           <button
                             type="button"
                             onClick={() => runTaskQueue([task])}
+                            aria-label={`单步运行 ${task.name}`}
                             className="ml-1 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1C1F24] hover:border-[#0067C0] dark:hover:border-[#4CC2FF] transition-colors whitespace-nowrap shrink-0"
                           >
                             <Play className="w-3 h-3" />
@@ -624,8 +621,14 @@ export default function App() {
                     <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                       {selectedTask.summary}
                     </p>
-                    <div className="pt-1 text-xs text-slate-500 dark:text-slate-400">
-                      参考 MaaNikke 流程：<span className="font-mono">{selectedTask.maaRefNode}</span>
+                    <div className="pt-1 text-xs text-slate-500 dark:text-slate-400 space-y-0.5">
+                      <div>
+                        Python 模块：<span className="font-mono">{selectedTask.pythonModule}</span>
+                      </div>
+                      <div>
+                        关联 COCO 特征：
+                        <span className="font-mono">{selectedTask.cocoFeatures.join(' · ')}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -633,19 +636,23 @@ export default function App() {
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
                       <SlidersHorizontal className="w-3.5 h-3.5" />
-                      任务参数配置
+                      任务参数配置 (default_config)
                     </div>
                     <div className="space-y-3">
                       {selectedTask.options.map((opt) => (
                         <div
                           key={opt.key}
-                          className="flex items-center justify-between gap-4 py-1.5"
+                          className="flex items-center justify-between gap-4 py-1"
                         >
-                          <label className="text-sm text-slate-700 dark:text-slate-300">
+                          <label
+                            htmlFor={`opt-${selectedTask.id}-${opt.key}`}
+                            className="text-sm text-slate-700 dark:text-slate-300"
+                          >
                             {opt.label}
                           </label>
                           {opt.type === 'boolean' && (
                             <input
+                              id={`opt-${selectedTask.id}-${opt.key}`}
                               type="checkbox"
                               checked={Boolean(opt.value)}
                               onChange={(e) =>
@@ -656,11 +663,12 @@ export default function App() {
                           )}
                           {opt.type === 'select' && (
                             <select
+                              id={`opt-${selectedTask.id}-${opt.key}`}
                               value={String(opt.value)}
                               onChange={(e) =>
                                 updateTaskOption(selectedTask.id, opt.key, e.target.value)
                               }
-                              className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619] text-slate-900 dark:text-slate-100"
+                              className="text-xs px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
                             >
                               {opt.choices?.map((choice) => (
                                 <option key={choice} value={choice}>
@@ -671,6 +679,7 @@ export default function App() {
                           )}
                           {opt.type === 'number' && (
                             <input
+                              id={`opt-${selectedTask.id}-${opt.key}`}
                               type="number"
                               min={opt.min}
                               max={opt.max}
@@ -693,7 +702,7 @@ export default function App() {
                   {/* State Machine Steps */}
                   <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2.5">
                     <div className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                      ok-script 状态机执行步骤
+                      ok-script 状态机执行链路
                     </div>
                     <ol className="space-y-2">
                       {selectedTask.steps.map((step, idx) => (
@@ -714,6 +723,16 @@ export default function App() {
             </div>
           )}
 
+          {activeNav === 'desktop' && (
+            <DesktopClonePanel
+              desktopClone={desktopClone}
+              onChange={setDesktopClone}
+              onApplyResolution={(res) =>
+                setSettings((prev) => ({ ...prev, resolution: res }))
+              }
+            />
+          )}
+
           {activeNav === 'triggers' && (
             <div className="max-w-5xl mx-auto space-y-4">
               <div>
@@ -721,11 +740,11 @@ export default function App() {
                   后台触发任务 (TriggerTask)
                 </h2>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                  参照 YES-BD2 的触发式守护机制，在主任务空闲或阻塞时自动介入处理异常弹窗、网络重连与结算界面。
+                  对应 yes_nk/tasks/PopupGuardTrigger.py，在主任务空闲或阻塞时自动介入处理网络重连与限时弹窗。
                 </p>
               </div>
 
-              <div className="bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-200 dark:divide-slate-800">
+              <div className="bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden divide-y divide-slate-200 dark:divide-slate-800">
                 {triggers.map((tr) => (
                   <div
                     key={tr.id}
@@ -770,6 +789,7 @@ export default function App() {
                         type="button"
                         role="switch"
                         aria-checked={tr.enabled}
+                        aria-label={`启用或停用 ${tr.name}`}
                         onClick={() => toggleTrigger(tr.id)}
                         className={`w-10 h-5 rounded-full transition-colors relative ${
                           tr.enabled
@@ -790,111 +810,7 @@ export default function App() {
             </div>
           )}
 
-          {activeNav === 'mappings' && (
-            <div className="max-w-6xl mx-auto space-y-5">
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                    MaaNikke 流程到 ok-script 识别方案映射
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                    针对 MaaFramework 纯模板匹配易受动态背景与分辨率偏移影响的问题，改用局部 ROI + OCR 校验与 Python 状态机容错。
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={mappingQuery}
-                      onChange={(e) => setMappingQuery(e.target.value)}
-                      placeholder="搜索场景、节点或 ROI..."
-                      className="pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1C1F24] text-slate-900 dark:text-slate-100 w-56"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-200/70 dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800">
-                    {(['all', 'ocr', 'hybrid', 'template'] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setMappingModeFilter(mode)}
-                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
-                          mappingModeFilter === mode
-                            ? 'bg-white dark:bg-[#2A2F38] text-slate-900 dark:text-white'
-                            : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                        }`}
-                      >
-                        {mode === 'all' ? '全部' : MODE_LABELS[mode]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
-                      <th className="py-3 px-4 font-medium">游戏场景</th>
-                      <th className="py-3 px-4 font-medium">MaaNikke 原节点与常见痛点</th>
-                      <th className="py-3 px-4 font-medium">YES-NK (ok-script) 替代方案</th>
-                      <th className="py-3 px-4 font-medium">ROI 相对区域与目标特征</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
-                    {filteredMappings.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="py-10 px-4 text-center text-sm text-slate-500 dark:text-slate-400"
-                        >
-                          没有匹配当前筛选条件的识别规则，请清空搜索词后重试。
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredMappings.map((row) => (
-                        <tr
-                          key={row.id}
-                          className="hover:bg-slate-50 dark:hover:bg-[#23272F] transition-colors align-top"
-                        >
-                          <td className="py-3.5 px-4 whitespace-nowrap">
-                            <div className="font-medium text-slate-900 dark:text-white">
-                              {row.scene}
-                            </div>
-                            <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                              {MODE_LABELS[row.mode]}
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4 max-w-xs">
-                            <div className="text-xs font-mono text-slate-700 dark:text-slate-300">
-                              {row.maaNode}
-                            </div>
-                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                              {row.maaPainPoint}
-                            </p>
-                          </td>
-                          <td className="py-3.5 px-4 max-w-xs">
-                            <div className="text-xs font-mono text-[#0067C0] dark:text-[#4CC2FF] leading-relaxed">
-                              {row.okMethod}
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <div className="text-xs font-mono tabular-nums text-slate-700 dark:text-slate-300">
-                              {row.roiBox}
-                            </div>
-                            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                              {row.targetTextOrAsset}
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          {activeNav === 'mappings' && <MappingsPanel mappings={RECOGNITION_MAPPINGS} />}
 
           {activeNav === 'logs' && (
             <div className="max-w-5xl mx-auto space-y-4">
@@ -930,7 +846,7 @@ export default function App() {
                 {filteredLogs.length === 0 ? (
                   <div className="py-12 px-4 text-center space-y-3">
                     <p className="text-sm text-slate-500 dark:text-slate-400">
-                      当前没有可显示的运行日志。点击右上角“仿真运行已选任务”以观察状态机输出。
+                      暂无运行日志。点击下方按钮试运行基础日常一条龙仿真流程。
                     </p>
                     <button
                       type="button"
@@ -938,7 +854,7 @@ export default function App() {
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-lg bg-[#0067C0] text-white hover:bg-[#005A9E] transition-colors"
                     >
                       <Play className="w-3.5 h-3.5" />
-                      试运行前 2 个日常任务
+                      试运行前 2 项任务
                     </button>
                   </div>
                 ) : (
@@ -964,7 +880,7 @@ export default function App() {
                         >
                           {entry.level}
                         </span>
-                        <span className="text-slate-500 dark:text-slate-400 w-40 shrink-0 truncate">
+                        <span className="text-slate-500 dark:text-slate-400 w-36 shrink-0 truncate">
                           {entry.source}
                         </span>
                         <span className="text-slate-800 dark:text-slate-200 font-sans text-xs leading-relaxed">
@@ -982,40 +898,29 @@ export default function App() {
             <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               <section className="lg:col-span-6 bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
                 <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                  客户端与识别引擎配置
+                  国服客户端与识别阈值配置
                 </h2>
 
                 <div className="space-y-3.5 text-sm">
                   <div className="space-y-1">
                     <label className="text-xs text-slate-500 dark:text-slate-400">
-                      目标服务器与运行环境
+                      目标客户端
                     </label>
-                    <select
-                      value={settings.server}
-                      onChange={(e) =>
-                        setSettings((prev) => ({
-                          ...prev,
-                          server: e.target.value as ClientSettings['server'],
-                        }))
-                      }
-                      className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
-                    >
-                      <option value="国服 PC 端 (WeGame / 新的希望)">
-                        国服 PC 端 (WeGame / 新的希望)
-                      </option>
-                      <option value="国际服 PC 端 (NIKKE Launcher)">
-                        国际服 PC 端 (NIKKE Launcher)
-                      </option>
-                      <option value="安卓模拟器 (ADB)">安卓模拟器 (ADB)</option>
-                    </select>
+                    <div className="px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619] text-slate-700 dark:text-slate-300">
+                      {settings.server} · 交互后端 {resolveInteractionBackend(desktopClone.run_mode)}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-xs text-slate-500 dark:text-slate-400">
+                      <label
+                        htmlFor="setting-window-title"
+                        className="text-xs text-slate-500 dark:text-slate-400"
+                      >
                         窗口标题匹配
                       </label>
                       <input
+                        id="setting-window-title"
                         type="text"
                         value={settings.windowTitle}
                         onChange={(e) =>
@@ -1025,72 +930,44 @@ export default function App() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs text-slate-500 dark:text-slate-400">
-                        基准分辨率 (16:9)
+                      <label
+                        htmlFor="setting-resolution"
+                        className="text-xs text-slate-500 dark:text-slate-400"
+                      >
+                        16:9 目标客户区
                       </label>
                       <select
+                        id="setting-resolution"
                         value={settings.resolution}
-                        onChange={(e) =>
-                          setSettings((prev) => ({
+                        onChange={(e) => {
+                          const nextRes = e.target.value as ClientSettings['resolution'];
+                          setSettings((prev) => ({ ...prev, resolution: nextRes }));
+                          const [w, h] = nextRes.split('x').map(Number);
+                          setDesktopClone((prev) => ({
                             ...prev,
-                            resolution: e.target.value as ClientSettings['resolution'],
-                          }))
-                        }
-                        className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
+                            clientWidth: w,
+                            clientHeight: h,
+                          }));
+                        }}
+                        className="w-full px-3 pr-8 py-2 text-sm font-mono rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
                       >
-                        <option value="1920x1080">1920x1080</option>
-                        <option value="1600x900">1600x900</option>
-                        <option value="1280x720">1280x720</option>
+                        <option value="1920x1080">1920×1080 · 无边框</option>
+                        <option value="1600x900">1600×900 · 窗口化</option>
+                        <option value="1280x720">1280×720 · 小窗</option>
                       </select>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-xs text-slate-500 dark:text-slate-400">
-                        截图采集通道
-                      </label>
-                      <select
-                        value={settings.captureMethod}
-                        onChange={(e) =>
-                          setSettings((prev) => ({
-                            ...prev,
-                            captureMethod: e.target.value as ClientSettings['captureMethod'],
-                          }))
-                        }
-                        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
+                      <label
+                        htmlFor="setting-ocr-th"
+                        className="text-xs text-slate-500 dark:text-slate-400"
                       >
-                        <option value="WindowsGraphicsCapture">WindowsGraphicsCapture</option>
-                        <option value="BitBlt">BitBlt</option>
-                        <option value="ADB Screencap">ADB Screencap</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-500 dark:text-slate-400">
-                        OCR 推理引擎
-                      </label>
-                      <select
-                        value={settings.ocrEngine}
-                        onChange={(e) =>
-                          setSettings((prev) => ({
-                            ...prev,
-                            ocrEngine: e.target.value as ClientSettings['ocrEngine'],
-                          }))
-                        }
-                        className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#141619]"
-                      >
-                        <option value="RapidOCR (ONNX)">RapidOCR (ONNX)</option>
-                        <option value="PaddleOCR">PaddleOCR</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-xs text-slate-500 dark:text-slate-400">
                         OCR 置信度阈值
                       </label>
                       <input
+                        id="setting-ocr-th"
                         type="number"
                         step={0.02}
                         min={0.5}
@@ -1106,10 +983,14 @@ export default function App() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs text-slate-500 dark:text-slate-400">
-                        模板匹配阈值
+                      <label
+                        htmlFor="setting-tpl-th"
+                        className="text-xs text-slate-500 dark:text-slate-400"
+                      >
+                        COCO 模板阈值
                       </label>
                       <input
+                        id="setting-tpl-th"
                         type="number"
                         step={0.02}
                         min={0.5}
@@ -1126,10 +1007,10 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="pt-2 space-y-2.5 border-t border-slate-200 dark:border-slate-800">
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
                     <label className="flex items-center justify-between gap-3 cursor-pointer">
                       <span className="text-slate-700 dark:text-slate-300">
-                        每个子任务前强制校验并返回大厅
+                        每个日常子任务前强制校验并返回大厅
                       </span>
                       <input
                         type="checkbox"
@@ -1143,32 +1024,21 @@ export default function App() {
                         className="w-4 h-4 accent-[#0067C0]"
                       />
                     </label>
-                    <label className="flex items-center justify-between gap-3 cursor-pointer">
-                      <span className="text-slate-700 dark:text-slate-300">
-                        检测到鼠标人工介入时自动暂停任务
-                      </span>
-                      <input
-                        type="checkbox"
-                        checked={settings.pauseOnManualInput}
-                        onChange={(e) =>
-                          setSettings((prev) => ({
-                            ...prev,
-                            pauseOnManualInput: e.target.checked,
-                          }))
-                        }
-                        className="w-4 h-4 accent-[#0067C0]"
-                      />
-                    </label>
                   </div>
                 </div>
               </section>
 
               <section className="lg:col-span-6 bg-white dark:bg-[#1C1F24] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4">
                 <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                    配置预览 (yes_nk_config.json)
-                  </h2>
-                  <div className="flex items-center gap-2">
+                  <div className="min-w-0">
+                    <h2 className="text-base font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                      同步配置导出
+                    </h2>
+                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                      yes_nk_config.json
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={handleCopyConfig}
@@ -1197,7 +1067,11 @@ export default function App() {
                   </div>
                 </div>
 
-                <pre className="p-3.5 rounded-lg bg-slate-50 dark:bg-[#141619] border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-700 dark:text-slate-300 overflow-auto max-h-[420px] leading-relaxed">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  下载后放入仓库根目录，运行 <code className="font-mono">python main.py</code> 时将由 <code className="font-mono">yes_nk/config.py</code> 自动读取覆盖桌面分身与窗口设置。
+                </p>
+
+                <pre className="p-3.5 rounded-lg bg-slate-50 dark:bg-[#141619] border border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-700 dark:text-slate-300 overflow-auto max-h-[380px] leading-relaxed">
                   {exportedConfigJson}
                 </pre>
               </section>

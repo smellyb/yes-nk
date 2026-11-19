@@ -1,0 +1,32 @@
+{
+  "info": {
+    "description": "YES-NK ok-script COCO feature dataset (1920x1080 16:9 baseline). Run tools/convert_maa_assets.py to import templates from MaaNikke.",
+    "version": "0.1.0"
+  },
+  "images": [],
+  "categories": [
+    { "id": 1, "name": "lobby_ark_icon" },
+    { "id": 2, "name": "lobby_mail_icon" },
+    { "id": 3, "name": "lobby_friend_icon" },
+    { "id": 4, "name": "lobby_outpost_defense_btn" },
+    { "id": 5, "name": "lobby_outpost_entry" },
+    { "id": 6, "name": "outpost_bulletin_icon" },
+    { "id": 7, "name": "lobby_shop_icon" },
+    { "id": 8, "name": "lobby_mission_icon" },
+    { "id": 9, "name": "popup_close_x" },
+    { "id": 10, "name": "popup_dont_show_today" },
+    { "id": 11, "name": "nav_home_btn" },
+    { "id": 12, "name": "nav_back_btn" },
+    { "id": 13, "name": "mail_claim_all_btn" },
+    { "id": 14, "name": "friend_send_all_btn" },
+    { "id": 15, "name": "outpost_claim_reward_btn" },
+    { "id": 16, "name": "outpost_wipe_out_btn" },
+    { "id": 17, "name": "dispatch_claim_all_btn" },
+    { "id": 18, "name": "dispatch_send_all_btn" },
+    { "id": 19, "name": "shop_diamond_icon" },
+    { "id": 20, "name": "shop_credit_icon" },
+    { "id": 21, "name": "shop_refresh_btn" },
+    { "id": 22, "name": "mission_claim_all_btn" }
+  ],
+  "annotations": []
+}

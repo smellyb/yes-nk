@@ -1,8 +1,32 @@
-export type NavSection = 'tasks' | 'triggers' | 'mappings' | 'logs' | 'settings';
+export type NavSection = 'tasks' | 'desktop' | 'triggers' | 'mappings' | 'logs' | 'settings';
 
 export type RecognitionMode = 'ocr' | 'template' | 'hybrid';
 
 export type TaskStatus = 'idle' | 'running' | 'completed' | 'skipped';
+
+export type RunMode = 'desktop_clone' | 'background_post_message' | 'foreground_compat';
+
+export interface DesktopCloneSettings {
+  run_mode: RunMode;
+  desktop_name: string;
+  switch_hotkey: string;
+  auto_close_desktop_on_exit: boolean;
+  prefer_borderless_1080p: boolean;
+  clientWidth: number;
+  clientHeight: number;
+  dpiScalePercent: number;
+}
+
+export interface GeometryVerdict {
+  aspectRatio: number;
+  ratioErrorPercent: number;
+  scaleX: number;
+  scaleY: number;
+  status: 'optimal_1080p' | 'valid_scaled_16_9' | 'non_16_9' | 'too_small';
+  isValid: boolean;
+  label: string;
+  recommendation: string;
+}
 
 export interface TaskOption {
   key: string;
@@ -17,13 +41,15 @@ export interface TaskOption {
 export interface AutomationTask {
   id: string;
   className: string;
+  pythonModule: string;
   name: string;
-  category: '基础日常' | '基地与养成' | '日常副本' | '活动与登录';
+  category: '基础日常' | '基地与养成' | '商店与结算';
   summary: string;
   enabled: boolean;
   estimatedSec: number;
   recognitionMode: RecognitionMode;
   maaRefNode: string;
+  cocoFeatures: string[];
   steps: string[];
   options: TaskOption[];
 }
@@ -40,13 +66,14 @@ export interface TriggerRule {
 
 export interface RecognitionMapping {
   id: string;
+  featureName: string;
   scene: string;
   maaNode: string;
   maaPainPoint: string;
   okMethod: string;
   mode: RecognitionMode;
   roiBox: string;
-  targetTextOrAsset: string;
+  ocrFallback: string;
 }
 
 export interface LogEntry {
@@ -58,13 +85,13 @@ export interface LogEntry {
 }
 
 export interface ClientSettings {
-  server: '国服 PC 端 (WeGame / 新的希望)' | '国际服 PC 端 (NIKKE Launcher)' | '安卓模拟器 (ADB)';
+  server: '国服 PC 端 (WeGame / 新的希望)';
+  exeName: string;
   windowTitle: string;
   resolution: '1920x1080' | '1600x900' | '1280x720';
-  captureMethod: 'WindowsGraphicsCapture' | 'BitBlt' | 'ADB Screencap';
-  ocrEngine: 'RapidOCR (ONNX)' | 'PaddleOCR';
+  captureMethod: 'WGC + BitBlt_RenderFull' | 'WGC' | 'BitBlt_RenderFull';
+  ocrEngine: 'RapidOCR (ok-script 内置)';
   ocrConfidence: number;
   templateThreshold: number;
   autoReturnLobby: boolean;
-  pauseOnManualInput: boolean;
 }
